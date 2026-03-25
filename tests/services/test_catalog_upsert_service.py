@@ -6,8 +6,12 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+
+import pytest
+from postgrest.exceptions import APIError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -15,6 +19,7 @@ from app.rules.catalog_update_rules import IDENTITY_FIELDS, filter_update_payloa
 from app.services.catalog_upsert_service import (
     RetryStats,
     apply_stock_sync_row_updates,
+    execute_with_retry,
     fetch_existing_catalog_item_ids,
 )
 
@@ -172,3 +177,76 @@ def test_apply_stock_sync_row_updates_uses_execute_with_retry(monkeypatch):
     stats = RetryStats()
     apply_stock_sync_row_updates(sb, [("x", {"cost_price": 1})], stats=stats, progress_every=10_000)
     assert calls == ["stock catalog_items update 1/1"]
+
+
+@dataclass
+class _OkExecuteResult:
+    data: List[Any] = field(default_factory=list)
+
+
+class _FlakyExecuteQuery:
+    def __init__(self, sequence: List[Any]):
+        self._sequence = list(sequence)
+
+    def execute(self):
+        if not self._sequence:
+            raise RuntimeError("sequence exhausted")
+        item = self._sequence.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def test_execute_with_retry_postgrest_502_transient_then_success(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    e502 = APIError({"message": "Bad gateway", "code": "502", "details": None, "hint": None})
+    ok = _OkExecuteResult()
+    q = _FlakyExecuteQuery([e502, e502, ok])
+    stats = RetryStats()
+    out = execute_with_retry(q, max_retries=6, label="update 3/100", stats=stats)
+    assert out is ok
+    assert stats.retries == 2
+
+
+def test_execute_with_retry_postgrest_constraint_violation_fails_fast():
+    err = APIError(
+        {
+            "message": "null value in column",
+            "code": "23502",
+            "details": "Failing row contains (...)",
+            "hint": None,
+        }
+    )
+    q = _FlakyExecuteQuery([err])
+    stats = RetryStats()
+    with pytest.raises(APIError):
+        execute_with_retry(q, max_retries=6, label="update 1/1", stats=stats)
+    assert stats.retries == 0
+
+
+def test_execute_with_retry_transient_exhausts_max_retries(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    e503 = APIError({"message": "Service Unavailable", "code": "503", "details": None, "hint": None})
+    q = _FlakyExecuteQuery([e503, e503, e503, e503, e503, e503])
+    stats = RetryStats()
+    with pytest.raises(APIError):
+        execute_with_retry(q, max_retries=6, label="batch", stats=stats)
+    assert stats.retries == 5
+
+
+def test_execute_with_retry_cloudflare_message_without_http_code(monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    err = APIError(
+        {
+            "message": "Cloudflare error 524",
+            "code": None,
+            "details": None,
+            "hint": None,
+        }
+    )
+    ok = _OkExecuteResult()
+    q = _FlakyExecuteQuery([err, ok])
+    stats = RetryStats()
+    out = execute_with_retry(q, max_retries=6, label="fetch", stats=stats)
+    assert out is ok
+    assert stats.retries == 1

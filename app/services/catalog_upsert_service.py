@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
+import re
 import sys
 import time
 from collections import defaultdict
@@ -19,6 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import httpx
 from dotenv import load_dotenv
+from postgrest.exceptions import APIError as PostgrestAPIError
 from supabase import create_client
 
 from app.helpers.text_helpers import clean_text
@@ -43,6 +46,74 @@ _TRANSIENT_EXC = (
     httpx.PoolTimeout,
 )
 
+_TRANSIENT_POSTGREST_CODES = frozenset({"502", "503", "504"})
+
+_TRANSIENT_POSTGREST_TEXT_MARKERS = (
+    "bad gateway",
+    "host error",
+    "cloudflare",
+    "json could not be generated",
+)
+
+
+def _postgrest_api_error_blob(exc: PostgrestAPIError) -> str:
+    parts = [str(getattr(exc, "message", None) or "")]
+    parts.append(str(getattr(exc, "details", None) or ""))
+    parts.append(str(getattr(exc, "hint", None) or ""))
+    return " ".join(parts)
+
+
+def _looks_like_html_gateway_body(text: str) -> bool:
+    low = text.lower()
+    if "<html" not in low and "<!doctype" not in low:
+        return False
+    if re.search(r"\b5\d{2}\b", text):
+        return True
+    for m in _TRANSIENT_POSTGREST_TEXT_MARKERS:
+        if m in low:
+            return True
+    return False
+
+
+def _is_transient_postgrest_api_error(exc: Exception) -> bool:
+    if not isinstance(exc, PostgrestAPIError):
+        return False
+    code = getattr(exc, "code", None)
+    if code is not None and str(code).strip() in _TRANSIENT_POSTGREST_CODES:
+        return True
+    blob = _postgrest_api_error_blob(exc).lower()
+    for marker in _TRANSIENT_POSTGREST_TEXT_MARKERS:
+        if marker in blob:
+            return True
+    full = _postgrest_api_error_blob(exc)
+    if _looks_like_html_gateway_body(full):
+        return True
+    return False
+
+
+def _is_retryable_transient(exc: Exception) -> bool:
+    if isinstance(exc, _TRANSIENT_EXC):
+        return True
+    return _is_transient_postgrest_api_error(exc)
+
+
+def _brief_api_error_for_log(exc: PostgrestAPIError) -> str:
+    code = getattr(exc, "code", None)
+    blob = _postgrest_api_error_blob(exc)
+    low = blob.lower()
+    if "<html" in low or "<!doctype" in low or len(blob) > 800:
+        return f"code={code!s} summary=HTML/non-JSON gateway body len={len(blob)} (not logged)"
+    one_line = " ".join(blob.split())
+    if len(one_line) > 160:
+        one_line = one_line[:157] + "..."
+    return f"code={code!s} summary={one_line!r}"
+
+
+def _transient_exc_log_summary(exc: Exception) -> str:
+    if isinstance(exc, PostgrestAPIError):
+        return _brief_api_error_for_log(exc)
+    return f"{type(exc).__name__}: {exc!r}"
+
 
 @dataclass
 class RetryStats:
@@ -61,13 +132,21 @@ def execute_with_retry(
     for attempt in range(max_retries):
         try:
             return query.execute()
-        except _TRANSIENT_EXC as exc:
+        except Exception as exc:
+            if not _is_retryable_transient(exc):
+                raise
             if attempt == max_retries - 1:
                 raise
             if stats is not None:
                 stats.retries += 1
-            print(f"WARN: transient error on {label} ({exc!r}); retry {attempt + 1}/{max_retries} in {delay:.1f}s")
-            time.sleep(delay)
+            jitter = 0.5 + random.random() * 0.5
+            sleep_for = min(delay * jitter, 60.0)
+            summary = _transient_exc_log_summary(exc)
+            print(
+                f"WARN: transient error on {label}; attempt {attempt + 1}/{max_retries}; "
+                f"retry in {sleep_for:.1f}s; {summary}"
+            )
+            time.sleep(sleep_for)
             delay = min(delay * 2, 60.0)
 
 
