@@ -1,0 +1,38 @@
+# =============================================================================
+# Tape Film — Pipeline Cron Jobs
+# =============================================================================
+#
+# Two pipelines, clearly separated:
+#
+#   STOCK SYNC    — daily operational updates (price, qty, release dates)
+#   CATALOG SYNC  — periodic new titles, TMDB enrichment, film linking
+#
+# Install:
+#   crontab -e
+#   (paste the relevant lines below)
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1) STOCK SYNC — Daily (e.g. 00:30)
+# ---------------------------------------------------------------------------
+# Updates known supplier offers only. No new titles, no TMDB, no films rebuild.
+# Auto-fetches latest files from FTP, then runs steps 01-05.
+#
+30 0 * * * MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo LOG_DIR=/opt/tape-film/logs /opt/tape-film/pipeline/run_stock_sync.sh
+
+# ---------------------------------------------------------------------------
+# 2) CATALOG SYNC — Every few days (e.g. Mon/Wed/Fri 02:15)
+# ---------------------------------------------------------------------------
+# Ingests new titles, enriches with TMDB, builds/links films.
+# Auto-fetches latest files from FTP, then runs steps 01-07.
+#
+# Catalog FTP: remote dirs in .env e.g. /TAPE_Film/Moovies/Catalog and /TAPE_Film/Lasgo/Catalog; local dirs below are typical.
+15 2 * * 1,3,5 MOOVIES_CATALOG_DIR=/opt/tape-film/sftp/moovies/catalog LASGO_CATALOG_DIR=/opt/tape-film/sftp/lasgo/catalog LOG_DIR=/opt/tape-film/logs /opt/tape-film/pipeline/run_catalog_sync.sh
+
+# ---------------------------------------------------------------------------
+# 3) MAINTENANCE — Manual / ad-hoc (not scheduled by default)
+# ---------------------------------------------------------------------------
+# Re-match specific not_found rows from a CSV review file:
+# /opt/tape-film/venv/bin/python maintenance_rematch_tmdb_from_csv.py \
+#   --csv /opt/tape-film/reports/not_found_review_latest.csv --sleep-ms 350

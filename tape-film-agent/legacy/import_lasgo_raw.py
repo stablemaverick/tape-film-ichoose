@@ -1,0 +1,280 @@
+import os
+import argparse
+import sys
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Iterable, Iterator, Optional
+
+import pandas as pd
+from dotenv import load_dotenv
+from supabase import create_client
+
+
+def die(msg: str) -> "None":
+    print(msg, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def normalize_key(s: str) -> str:
+    return " ".join(str(s).strip().lower().split())
+
+
+def lower_keys(record: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in (record or {}).items():
+        out[normalize_key(k)] = v
+    return out
+
+
+def pick(record_lc: Dict[str, Any], *candidates: str, default: str = "") -> str:
+    for name in candidates:
+        key = normalize_key(name)
+        val = record_lc.get(key)
+        if val is None:
+            continue
+        s = str(val).strip()
+        if s != "":
+            return s
+    return default
+
+
+def chunked(items: Iterable[Dict[str, Any]], size: int) -> Iterable[list[Dict[str, Any]]]:
+    batch: list[Dict[str, Any]] = []
+    for item in items:
+        batch.append(item)
+        if len(batch) >= size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def fetch_existing_lasgo_barcodes(supabase, table: str, page_size: int = 1000) -> set[str]:
+    out: set[str] = set()
+    offset = 0
+    while True:
+        resp = (
+            supabase.table(table)
+            .select("raw_ean")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        page = resp.data or []
+        if not page:
+            break
+        for r in page:
+            bc = (r.get("raw_ean") or "").strip()
+            if bc:
+                out.add(bc)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return out
+
+
+def fetch_known_barcodes(supabase, supplier_names: list[str], page_size: int = 1000) -> set[str]:
+    out: set[str] = set()
+    for supplier in supplier_names:
+        for table in ("staging_supplier_offers", "catalog_items"):
+            offset = 0
+            while True:
+                resp = (
+                    supabase.table(table)
+                    .select("barcode")
+                    .eq("supplier", supplier)
+                    .not_.is_("barcode", "null")
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                page = resp.data or []
+                if not page:
+                    break
+                for r in page:
+                    bc = (r.get("barcode") or "").strip()
+                    if bc:
+                        out.add(bc)
+                if len(page) < page_size:
+                    break
+                offset += page_size
+    return out
+
+
+def is_blu_ray_format(value: str) -> bool:
+    """
+    Keep only Blu-ray category rows from Lasgo feed.
+    """
+    v = (value or "").strip().lower()
+    if not v:
+        return False
+    v = v.replace("_", " ").replace("/", " ").replace("-", " ")
+    v = " ".join(v.split())
+    return "blu ray" in v or "bluray" in v
+
+
+def load_lasgo_file(filepath: str) -> pd.DataFrame:
+    fp = filepath.lower()
+    if fp.endswith(".csv"):
+        return pd.read_csv(filepath, dtype=str).fillna("")
+    if fp.endswith(".xlsx") or fp.endswith(".xls"):
+        return pd.read_excel(filepath, dtype=str).fillna("")
+    die(f"Unsupported file type: {filepath}")
+
+
+def iter_input_files(path_or_dir: str) -> Iterator[Path]:
+    p = Path(path_or_dir)
+    if p.is_dir():
+        for child in sorted(p.iterdir()):
+            if child.name.startswith("."):
+                continue
+            if child.suffix.lower() in {".xlsx", ".xls", ".csv"}:
+                yield child
+        return
+    yield p
+
+
+def import_lasgo_raw(
+    path_or_dir: str,
+    table: str = "staging_lasgo_raw",
+    limit: Optional[int] = None,
+    mode: str = "full",
+    existing_only_in_raw: bool = False,
+) -> str:
+    load_dotenv(".env")
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not supabase_url:
+        die("Missing SUPABASE_URL in .env")
+    if not supabase_key:
+        die("Missing SUPABASE_SERVICE_KEY in .env")
+
+    supabase = create_client(supabase_url, supabase_key)
+
+    batch_id = str(uuid.uuid4())
+    inserted = 0
+    skipped_non_bluray = 0
+    skipped_unknown = 0
+    existing_barcodes: set[str] = set()
+    known_barcodes: set[str] = set()
+    if mode == "stock_cost" and existing_only_in_raw:
+        existing_barcodes = fetch_existing_lasgo_barcodes(supabase, table)
+        known_barcodes = fetch_known_barcodes(supabase, ["lasgo", "Lasgo"])
+
+    for file_path in iter_input_files(path_or_dir):
+        if not file_path.exists():
+            die(f"File not found: {file_path}")
+
+        df = load_lasgo_file(str(file_path))
+
+        rows: list[Dict[str, Any]] = []
+        for idx, record in enumerate(df.to_dict(orient="records"), start=1):
+            if limit is not None and inserted + len(rows) >= limit:
+                break
+
+            record_lc = lower_keys(record)
+
+            raw_title = pick(record_lc, "TITLE", "Title", default="")
+            raw_ean = pick(record_lc, "EAN/Barcode", "EAN", "Barcode", "UPC", default="")
+            raw_format_l2 = pick(record_lc, "Format L2", "FORMAT", "Format", default="")
+            if not is_blu_ray_format(raw_format_l2):
+                skipped_non_bluray += 1
+                continue
+            raw_selling_price_sterling = pick(
+                record_lc,
+                "Selling Price Sterling",
+                "Your Price ex VAT",
+                "Your Price",
+                "Price",
+                default="",
+            )
+            raw_free_stock = pick(record_lc, "Free Stock", "AVAILABILITY", "Availability", default="")
+            raw_release_date = pick(record_lc, "RELEASE", "Release Date", default="")
+            raw_label = pick(record_lc, "Label", "STUDIO/BRAND", "Studio", default="")
+            raw_artist = pick(record_lc, "Artist", "DIRECTOR/ARTIST", "Director", default="")
+
+            base = {
+                "import_batch_id": batch_id,
+                "source_filename": file_path.name,
+                "row_number": idx,
+                "raw_payload": record,
+            }
+
+            if mode == "stock_cost":
+                if existing_only_in_raw and (
+                    (raw_ean and raw_ean not in known_barcodes and raw_ean not in existing_barcodes)
+                    or (not raw_ean)
+                ):
+                    skipped_unknown += 1
+                    continue
+                rows.append(
+                    {
+                        **base,
+                        "raw_ean": raw_ean,
+                        "raw_selling_price_sterling": raw_selling_price_sterling,
+                        "raw_free_stock": raw_free_stock,
+                    }
+                )
+                continue
+
+            rows.append(
+                {
+                    **base,
+                    "raw_title": raw_title,
+                    "raw_ean": raw_ean,
+                    "raw_format_l2": raw_format_l2,
+                    "raw_selling_price_sterling": raw_selling_price_sterling,
+                    "raw_free_stock": raw_free_stock,
+                    "raw_label": raw_label,
+                    "raw_release_date": raw_release_date,
+                    "raw_artist": raw_artist,
+                }
+            )
+
+        for batch in chunked(rows, 1000):
+            # Table doesn't have a stable upsert key yet, so we insert a sample.
+            # We'll add idempotent upsert semantics once matching-phase keys are agreed.
+            supabase.table(table).insert(batch).execute()
+
+        inserted += len(rows)
+        print(
+            f"Imported {len(rows)} Lasgo raw rows from {file_path.name} "
+            f"(running total: {inserted}, skipped non-blu-ray: {skipped_non_bluray})"
+        )
+
+        if limit is not None and inserted >= limit:
+            break
+
+    print(
+        f"Lasgo raw import complete. Mode: {mode} Batch: {batch_id} "
+        f"Total imported: {inserted} Skipped non-blu-ray: {skipped_non_bluray} "
+        f"Skipped unknown: {skipped_unknown}"
+    )
+    return batch_id
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="A single file path or a directory (e.g. LasgoCat)")
+    parser.add_argument("--limit", type=int, default=None, help="Max rows to import across all files")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "stock_cost"],
+        default="full",
+        help="full = refresh all raw fields; stock_cost = only refresh barcode/sku/price/qty",
+    )
+    parser.add_argument(
+        "--existing-only-in-raw",
+        action="store_true",
+        help="In stock_cost mode, update only rows already present in raw (skip unknown barcodes).",
+    )
+    parser.add_argument("--table", default="staging_lasgo_raw")
+    args = parser.parse_args()
+
+    import_lasgo_raw(
+        args.path,
+        table=args.table,
+        limit=args.limit,
+        mode=args.mode,
+        existing_only_in_raw=args.existing_only_in_raw,
+    )
+

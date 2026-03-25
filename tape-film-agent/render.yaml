@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: tape-film-agent-web
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: TAPE_FILM_LEGACY_ROOT
+        value: /opt/render/project/src/legacy
+
+  - type: cron
+    name: tape-film-agent-stock-sync
+    env: python
+    schedule: "30 0 * * *"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m jobs.run_daily_stock_sync"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: TAPE_FILM_LEGACY_ROOT
+        value: /opt/render/project/src/legacy
+
+  - type: cron
+    name: tape-film-agent-catalog-sync
+    env: python
+    schedule: "15 2 * * 1,3,5"
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m jobs.run_catalog_ingest"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: TAPE_FILM_LEGACY_ROOT
+        value: /opt/render/project/src/legacy

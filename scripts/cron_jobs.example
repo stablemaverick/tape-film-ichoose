@@ -1,0 +1,27 @@
+# Example crontab entries for production VM
+# Adjust paths/env vars to your VM layout.
+#
+# Recommended cadence (clear split):
+#   Daily / frequent: run_daily_stock_sync.sh
+#   Every few days (or manual): run_daily_catalog_sync.sh
+#
+# Keep these windows separated to avoid overlap/confusion.
+#
+# Install:
+#   crontab -e
+#   (paste relevant lines)
+
+# 1) DAILY / FREQUENT (operational only):
+#    Includes FTP fetch (--mode stock) then steps 01–05. Picks latest file per supplier dir.
+#    Example: daily at 00:30. (Optional: fetch alone — venv/bin/python scripts/fetch_supplier_files.py --mode stock)
+30 0 * * * LOG_DIR=/opt/tape-film/logs MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo /opt/tape-film/pipeline/run_stock_sync.sh
+
+# 2) EVERY FEW DAYS / MANUAL (catalog growth + enrichment):
+#    Includes FTP fetch (--mode catalog; set MOOVIES_CATALOG_REMOTE_DIR / LASGO_CATALOG_REMOTE_DIR in .env).
+#    Example cadence: Mon/Wed/Fri at 02:15.
+15 2 * * 1,3,5 LOG_DIR=/opt/tape-film/logs MOOVIES_CATALOG_DIR=/opt/tape-film/sftp/moovies/catalog LASGO_CATALOG_DIR=/opt/tape-film/sftp/lasgo/catalog /opt/tape-film/pipeline/run_catalog_sync.sh
+
+# 3) Optional: maintenance rematch (manual file-driven) - run ad-hoc, not scheduled by default
+# 45 3 * * 0 /opt/tape-film/venv/bin/python /opt/tape-film/maintenance_rematch_tmdb_from_csv.py \
+#   --csv /opt/tape-film/reports/not_found_review_latest.csv --sleep-ms 350
+
