@@ -11,17 +11,18 @@ SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 
 # tape-film-ichoose-cron BEGIN
+# Shared lock: /opt/tape-film-ichoose/.locks/pipeline.lock — stock and catalog cannot overlap.
 
 # --- Stock sync (hourly at :10) ---
 # Minute 10 of every hour: inventory / commercial sync. /usr/bin/flock -n exits immediately
-# if cron_stock.lock is held (previous run still active). cd ensures relative paths in the
+# if pipeline.lock is held (stock or catalog still running). cd ensures relative paths in the
 # repo behave; . venv/bin/activate puts python/pip on PATH for any subprocess that needs it.
-10 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/cron_stock.lock /bin/bash -c 'cd /opt/tape-film-ichoose && . /opt/tape-film-ichoose/venv/bin/activate && /bin/bash /opt/tape-film-ichoose/pipeline/run_stock_sync.sh' >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
+10 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash -c 'cd /opt/tape-film-ichoose && . /opt/tape-film-ichoose/venv/bin/activate && /bin/bash /opt/tape-film-ichoose/pipeline/run_stock_sync.sh' >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
 
 # --- Catalog sync (daily 07:30) ---
-# Once per day at 07:30 local time: full catalog pipeline. Separate flock lock so stock and
-# catalog never double-run each other, but two catalog runs cannot overlap.
+# Once per day at 07:30 local time: full catalog pipeline. Same pipeline.lock as stock so the
+# two jobs never run concurrently on this VM.
 # run_catalog_sync.sh also writes its own dated log under logs/; this file captures wrapper stderr.
-30 7 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/cron_catalog.lock /bin/bash -c 'cd /opt/tape-film-ichoose && . /opt/tape-film-ichoose/venv/bin/activate && /bin/bash /opt/tape-film-ichoose/pipeline/run_catalog_sync.sh' >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
+30 7 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash -c 'cd /opt/tape-film-ichoose && . /opt/tape-film-ichoose/venv/bin/activate && /bin/bash /opt/tape-film-ichoose/pipeline/run_catalog_sync.sh' >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
 
 # tape-film-ichoose-cron END
