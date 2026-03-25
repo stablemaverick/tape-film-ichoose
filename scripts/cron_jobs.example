@@ -7,6 +7,9 @@
 # Managed block is replaced on each install_cron.sh run (see BEGIN/END markers).
 # =============================================================================
 
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
 # tape-film-ichoose-cron BEGIN
 
 # --- Stock sync (hourly at :10) ---
