@@ -16,14 +16,12 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # tape-film-ichoose-cron BEGIN
 # Shared lock: /opt/tape-film-ichoose/.locks/pipeline.lock — stock and catalog cannot overlap.
 
-# --- Stock sync (hourly at :10) ---
-# Wrapper sends Slack start/success/failure; then runs the stock pipeline. /usr/bin/flock -n
-# exits immediately if pipeline.lock is held (stock or catalog still running).
-10 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
+# --- Stock sync (3x daily: 06:00, 14:00, 22:00 Sydney) ---
+0 19 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
+0 3 * * *  /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
+0 11 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
 
-# --- Catalog sync (daily 07:30) ---
-# Same pipeline.lock as stock. Wrapper notifies Slack then runs the catalog pipeline.
-# run_catalog_sync.sh also writes its own dated log under logs/; this file captures wrapper stderr.
-30 7 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_catalog_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
+# --- Catalog sync (daily 09:00 Sydney) ---
+0 22 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_catalog_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
 
 # tape-film-ichoose-cron END
