@@ -3,6 +3,16 @@ Normalize staging_*_raw rows into staging_supplier_offers.
 
 CLI shim: normalize_supplier_products.py
 Pipeline: pipeline/03_normalize_supplier_products.py -> run_from_argv()
+
+Upsert conflict target:
+  PostgREST ``upsert(..., on_conflict="supplier,barcode")`` requires a UNIQUE (or PRIMARY KEY)
+  constraint that includes those columns, e.g.::
+
+    CREATE UNIQUE INDEX staging_supplier_offers_supplier_barcode_key
+      ON staging_supplier_offers (supplier, barcode);
+
+  If upsert fails with "no unique or exclusion constraint matching ON CONFLICT", add the above
+  (or equivalent) in Supabase SQL / a migration.
 """
 
 from __future__ import annotations
@@ -11,8 +21,9 @@ import argparse
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from dotenv import load_dotenv
 from supabase import create_client
@@ -20,6 +31,113 @@ from supabase import create_client
 from app.helpers.catalog_match_helpers import normalize_title
 from app.helpers.text_helpers import chunked, clean_text, parse_date, parse_int, parse_price_gbp, now_iso
 from app.rules.pricing_rules import calculate_sale_price
+
+_DEFAULT_UPSERT_CHUNK = 500
+_MAX_UPSERT_CHUNK = 2000
+
+
+def _normalize_upsert_chunk_size(*, supplier: str, cli_override: Optional[int]) -> int:
+    """
+    Rows per upsert chunk. Precedence: CLI > NORMALIZE_<SUPPLIER>_UPSERT_CHUNK_SIZE >
+    NORMALIZE_UPSERT_CHUNK_SIZE > default (500).
+    """
+    if cli_override is not None:
+        return max(1, min(int(cli_override), _MAX_UPSERT_CHUNK))
+    specific = os.getenv(f"NORMALIZE_{supplier.upper()}_UPSERT_CHUNK_SIZE")
+    raw = (specific or os.getenv("NORMALIZE_UPSERT_CHUNK_SIZE") or str(_DEFAULT_UPSERT_CHUNK)).strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        n = _DEFAULT_UPSERT_CHUNK
+    return max(1, min(n, _MAX_UPSERT_CHUNK))
+
+
+def _format_normalize_upsert_error(
+    exc: BaseException,
+    *,
+    supplier: str,
+    offers_table: str,
+    chunk_index: int,
+    chunk_total: int,
+    chunk_rows: int,
+    chunk_size: int,
+    elapsed_ms: float,
+    attempt: int,
+) -> str:
+    msg = str(exc)
+    if hasattr(exc, "message") and getattr(exc, "message"):
+        msg = f"{msg} | message={getattr(exc, 'message')!r}"
+    timeout_hint = ""
+    low = msg.lower()
+    if "timeout" in low or "57014" in msg:
+        timeout_hint = (
+            " (likely DB statement timeout — try smaller NORMALIZE_UPSERT_CHUNK_SIZE "
+            "or NORMALIZE_LASGO_UPSERT_CHUNK_SIZE)"
+        )
+    return (
+        f"normalize upsert failed: supplier={supplier!r} table={offers_table!r} "
+        f"chunk={chunk_index}/{chunk_total} rows_in_chunk={chunk_rows} chunk_size={chunk_size} "
+        f"attempt={attempt} elapsed_ms={elapsed_ms:.0f}{timeout_hint} | error={msg!r}"
+    )
+
+
+def _upsert_staging_offers_in_chunks(
+    supabase: Any,
+    offers_table: str,
+    rows: List[Dict[str, Any]],
+    *,
+    supplier: str,
+    log_prefix: str,
+    chunk_size: int,
+) -> None:
+    """
+    Upsert rows with on_conflict=supplier,barcode in fixed-size chunks to avoid statement timeouts.
+    Retries each chunk once on failure (transient timeouts).
+    """
+    if not rows:
+        return
+    size = max(1, min(chunk_size, _MAX_UPSERT_CHUNK))
+    total = len(rows)
+    n_chunks = (total + size - 1) // size
+
+    for i, batch in enumerate(chunked(rows, size), start=1):
+        last_exc: Optional[BaseException] = None
+        last_elapsed_ms = 0.0
+        for attempt in (1, 2):
+            t0 = time.perf_counter()
+            try:
+                supabase.table(offers_table).upsert(batch, on_conflict="supplier,barcode").execute()
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                print(
+                    f"{log_prefix} upsert chunk {i}/{n_chunks} rows={len(batch)} "
+                    f"elapsed_ms={elapsed_ms:.0f} table={offers_table!r} on_conflict=supplier,barcode"
+                )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                last_elapsed_ms = (time.perf_counter() - t0) * 1000
+                if attempt == 1:
+                    print(
+                        f"{log_prefix} upsert chunk {i}/{n_chunks} attempt {attempt} failed "
+                        f"({exc!s}); retrying once…",
+                        file=sys.stderr,
+                    )
+                    time.sleep(1.0)
+        if last_exc is not None:
+            detail = _format_normalize_upsert_error(
+                last_exc,
+                supplier=supplier,
+                offers_table=offers_table,
+                chunk_index=i,
+                chunk_total=n_chunks,
+                chunk_rows=len(batch),
+                chunk_size=size,
+                elapsed_ms=last_elapsed_ms,
+                attempt=2,
+            )
+            print(detail, file=sys.stderr)
+            raise RuntimeError(detail) from last_exc
 
 
 def fetch_all_rows_for_batch(
@@ -45,7 +163,13 @@ def fetch_all_rows_for_batch(
     return all_rows
 
 
-def normalize_from_moovies(supabase, offers_table: str, batch_id: str) -> int:
+def normalize_from_moovies(
+    supabase,
+    offers_table: str,
+    batch_id: str,
+    *,
+    upsert_chunk_size: Optional[int] = None,
+) -> int:
     rows = fetch_all_rows_for_batch(
         supabase,
         "staging_moovies_raw",
@@ -97,14 +221,27 @@ def normalize_from_moovies(supabase, offers_table: str, batch_id: str) -> int:
 
     out = list(deduped_by_barcode.values())
 
-    for batch in chunked(out, 1000):
-        supabase.table(offers_table).upsert(batch, on_conflict="supplier,barcode").execute()
+    chunk_sz = _normalize_upsert_chunk_size(supplier="moovies", cli_override=upsert_chunk_size)
+    _upsert_staging_offers_in_chunks(
+        supabase,
+        offers_table,
+        out,
+        supplier="moovies",
+        log_prefix=f"[normalize moovies batch={batch_id}]",
+        chunk_size=chunk_sz,
+    )
 
     print(f"Upserted {len(out)} staging_supplier_offers rows from Moovies batch {batch_id}")
     return len(out)
 
 
-def normalize_from_lasgo(supabase, offers_table: str, batch_id: str) -> int:
+def normalize_from_lasgo(
+    supabase,
+    offers_table: str,
+    batch_id: str,
+    *,
+    upsert_chunk_size: Optional[int] = None,
+) -> int:
     rows = fetch_all_rows_for_batch(
         supabase,
         "staging_lasgo_raw",
@@ -161,8 +298,15 @@ def normalize_from_lasgo(supabase, offers_table: str, batch_id: str) -> int:
 
     out = list(deduped_by_barcode.values())
 
-    for batch in chunked(out, 1000):
-        supabase.table(offers_table).upsert(batch, on_conflict="supplier,barcode").execute()
+    chunk_sz = _normalize_upsert_chunk_size(supplier="lasgo", cli_override=upsert_chunk_size)
+    _upsert_staging_offers_in_chunks(
+        supabase,
+        offers_table,
+        out,
+        supplier="lasgo",
+        log_prefix=f"[normalize lasgo batch={batch_id}]",
+        chunk_size=chunk_sz,
+    )
 
     print(f"Upserted {len(out)} staging_supplier_offers rows from Lasgo batch {batch_id}")
     return len(out)
@@ -355,6 +499,7 @@ def run_normalize(
     lasgo_batch: Optional[str],
     shopify_batch: Optional[str],
     env_file: str = ".env",
+    upsert_chunk_size: Optional[int] = None,
 ) -> None:
     if not moovies_batch and not lasgo_batch and not shopify_batch:
         print("Provide --moovies-batch and/or --lasgo-batch and/or --shopify-batch", file=sys.stderr)
@@ -373,9 +518,13 @@ def run_normalize(
     supabase = create_client(url, key)
 
     if moovies_batch:
-        normalize_from_moovies(supabase, offers_table, moovies_batch)
+        normalize_from_moovies(
+            supabase, offers_table, moovies_batch, upsert_chunk_size=upsert_chunk_size
+        )
     if lasgo_batch:
-        normalize_from_lasgo(supabase, offers_table, lasgo_batch)
+        normalize_from_lasgo(
+            supabase, offers_table, lasgo_batch, upsert_chunk_size=upsert_chunk_size
+        )
     if shopify_batch:
         normalize_from_shopify(supabase, offers_table, shopify_batch)
 
@@ -386,6 +535,17 @@ def run_from_argv(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--moovies-batch", default=None)
     parser.add_argument("--lasgo-batch", default=None)
     parser.add_argument("--shopify-batch", default=None)
+    parser.add_argument(
+        "--upsert-chunk-size",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Rows per upsert chunk for Moovies/Lasgo into staging_supplier_offers "
+            "(default: env NORMALIZE_UPSERT_CHUNK_SIZE or supplier-specific "
+            "NORMALIZE_LASGO_UPSERT_CHUNK_SIZE / NORMALIZE_MOOVIES_UPSERT_CHUNK_SIZE, else 500)"
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         run_normalize(
@@ -393,6 +553,7 @@ def run_from_argv(argv: Optional[list[str]] = None) -> int:
             moovies_batch=args.moovies_batch,
             lasgo_batch=args.lasgo_batch,
             shopify_batch=args.shopify_batch,
+            upsert_chunk_size=args.upsert_chunk_size,
         )
     except SystemExit as e:
         code = e.code
