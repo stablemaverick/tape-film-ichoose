@@ -24,4 +24,8 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # --- Catalog sync (daily 09:00 Sydney) ---
 0 22 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_catalog_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
 
+# --- Shopify sync (Sydney) ---
+*/15 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/shopify_store_sync.lock /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_store_sync.sh >> /opt/tape-film-ichoose/logs/cron_shopify_store_sync.log 2>&1
+*/30 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/shopify_inventory_sync.lock /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_inventory_sync.sh >> /opt/tape-film-ichoose/logs/cron_shopify_inventory_sync.log 2>&1
+
 # tape-film-ichoose-cron END
