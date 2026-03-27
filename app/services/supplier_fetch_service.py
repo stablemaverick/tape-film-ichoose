@@ -1,6 +1,9 @@
 """
 Fetch latest Moovies and Lasgo supplier files from FTP (pipeline step 00).
 
+Strict catalog fetch: a supplier folder with no matching files yields skipped_no_files for that
+supplier only; the other supplier is still fetched and the pipeline can complete.
+
 Lasgo SFTP → FTP mirror (optional):
   When LASGO_SFTP_MIRROR_ENABLED=1, before any Lasgo FTP download we pull the latest
   matching file from the vendor SFTP tree, run the security scan, and STOR it onto our
@@ -32,6 +35,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, Literal, Optional, Tuple
+
+CatalogSourceFetchStatus = Literal["success", "skipped_no_files"]
 
 from dotenv import load_dotenv
 
@@ -359,50 +364,97 @@ def _read_kv_file(path: str) -> Dict[str, str]:
 
 
 def run_catalog_archive_from_env(*, fetch_env_path: str, env_file: str = ".env") -> None:
-    """Move the Moovies + Lasgo catalog files recorded in fetch env into .../Catalog/Archive on FTP."""
+    """
+    Move catalog files recorded in fetch env into .../Catalog/Archive on FTP.
+    Archives each supplier only when CATALOG_FTP_* remote + file are present (skipped sources omitted).
+    """
     load_dotenv(env_file)
     data = _read_kv_file(fetch_env_path)
-    need = (
-        "CATALOG_FTP_MOOVIES_REMOTE",
-        "CATALOG_FTP_MOOVIES_FILE",
-        "CATALOG_FTP_LASGO_REMOTE",
-        "CATALOG_FTP_LASGO_FILE",
-    )
-    for k in need:
-        if not data.get(k):
-            print(f"catalog archive: missing {k} in {fetch_env_path}", file=sys.stderr)
-            raise SystemExit(1)
 
-    ftp_m = build_ftp_client(supplier="moovies")
-    try:
-        _move_remote_into_archive(ftp_m, data["CATALOG_FTP_MOOVIES_REMOTE"], data["CATALOG_FTP_MOOVIES_FILE"])
-    finally:
-        try:
-            ftp_m.quit()
-        except Exception:
-            ftp_m.close()
+    moovies_remote = (data.get("CATALOG_FTP_MOOVIES_REMOTE") or "").strip()
+    moovies_file = (data.get("CATALOG_FTP_MOOVIES_FILE") or "").strip().strip("'\"")
+    lasgo_remote = (data.get("CATALOG_FTP_LASGO_REMOTE") or "").strip()
+    lasgo_file = (data.get("CATALOG_FTP_LASGO_FILE") or "").strip().strip("'\"")
 
-    ftp_l = build_ftp_client(supplier="lasgo")
-    try:
-        _move_remote_into_archive(ftp_l, data["CATALOG_FTP_LASGO_REMOTE"], data["CATALOG_FTP_LASGO_FILE"])
-    finally:
+    if not moovies_remote and not lasgo_remote:
+        print(
+            f"catalog archive: no CATALOG_FTP_* remotes in {fetch_env_path}; nothing to archive (ok)"
+        )
+        return
+
+    did_any = False
+
+    if moovies_remote and moovies_file:
+        ftp_m = build_ftp_client(supplier="moovies")
         try:
-            ftp_l.quit()
-        except Exception:
-            ftp_l.close()
+            _move_remote_into_archive(ftp_m, moovies_remote, moovies_file)
+            did_any = True
+        finally:
+            try:
+                ftp_m.quit()
+            except Exception:
+                ftp_m.close()
+    else:
+        print("catalog archive: skipping Moovies (no file fetched this run)")
+
+    if lasgo_remote and lasgo_file:
+        ftp_l = build_ftp_client(supplier="lasgo")
+        try:
+            _move_remote_into_archive(ftp_l, lasgo_remote, lasgo_file)
+            did_any = True
+        finally:
+            try:
+                ftp_l.quit()
+            except Exception:
+                ftp_l.close()
+    else:
+        print("catalog archive: skipping Lasgo (no file fetched this run)")
+
+    if not did_any:
+        print("catalog archive: no files to move (all sources had no fetch this run; ok)")
+        return
+
+
+def _norm_source_status(raw: str) -> CatalogSourceFetchStatus:
+    s = (raw or "").strip()
+    if s == "success":
+        return "success"
+    return "skipped_no_files"
+
+
+def catalog_sync_source_summary_message(
+    *,
+    lasgo: str,
+    moovies: str,
+) -> str:
+    """Single-line human summary for logs, history, and Slack (Lasgo then Moovies)."""
+    ls = _norm_source_status(lasgo)
+    ms = _norm_source_status(moovies)
+    parts = ["Catalog sync completed."]
+    if ls == "success":
+        parts.append("Lasgo catalog processed successfully.")
+    else:
+        parts.append("No Lasgo catalog files were available to process.")
+    if ms == "success":
+        parts.append("Moovies catalog processed successfully.")
+    else:
+        parts.append("No Moovies catalog files were available to process.")
+    return " ".join(parts)
 
 
 def run_catalog_fetch_strict(*, env_file: str = ".env", write_fetch_env: str) -> None:
     """
     Catalog sync: download latest Moovies + Lasgo files from fixed TAPE_Film catalog paths only.
-    Exits with message if either remote folder has no matching file. No local fallback.
-    Writes a shell-sourceable env file with local paths and remote names for later archiving.
+    A source with no matching file is recorded as skipped_no_files (not a fatal error).
+    Writes a shell-sourceable env file with local paths, per-source status, and archive keys
+    only for downloaded files.
 
     Runs Lasgo SFTP→FTP mirror first when LASGO_SFTP_MIRROR_ENABLED; scans each local
     file immediately after download (before writing fetch manifest).
     """
     load_dotenv(env_file)
 
+    from app.services.file_security_scan import scan_after_supplier_fetch
     from app.services.lasgo_sftp_mirror import mirror_lasgo_sftp_to_ftp_if_enabled
 
     # Catalog strict: mirror failure must abort (no silent stale catalog).
@@ -419,22 +471,32 @@ def run_catalog_fetch_strict(*, env_file: str = ".env", write_fetch_env: str) ->
         "supplier_exports", "lasgo", "catalog"
     )
 
+    lasgo_status: CatalogSourceFetchStatus = "skipped_no_files"
+    moovies_status: CatalogSourceFetchStatus = "skipped_no_files"
+    lasgo_local = ""
+    lasgo_name = ""
+    moovies_local = ""
+    moovies_name = ""
+
     ftp_l = build_ftp_client(supplier="lasgo")
     try:
         chosen_l = choose_latest_file(ftp_l, lasgo_remote_dir, lasgo_pattern)
         if chosen_l is None:
-            print(f"No Files to Process in path - {lasgo_remote_dir}")
-            raise SystemExit(1)
-        lasgo_name, _ = chosen_l
-        Path(lasgo_local_dir).mkdir(parents=True, exist_ok=True)
-        lasgo_local = str(Path(lasgo_local_dir) / lasgo_name)
-        # choose_latest_file already cwd'd into lasgo_remote_dir; a second cwd breaks relative paths.
-        with open(lasgo_local, "wb") as f:
-            ftp_l.retrbinary(f"RETR {lasgo_name}", f.write)
-        print(f"[LASGO(catalog)] Downloaded: {lasgo_remote_dir.rstrip('/')}/{lasgo_name} -> {lasgo_local}")
-        from app.services.file_security_scan import scan_after_supplier_fetch
-
-        scan_after_supplier_fetch(lasgo_local, "LASGO(catalog)")
+            print(
+                f"[LASGO(catalog)] No catalog files to process (skipped) — remote path {lasgo_remote_dir} "
+                f"(pattern {lasgo_pattern!r})"
+            )
+        else:
+            lasgo_name, _ = chosen_l
+            Path(lasgo_local_dir).mkdir(parents=True, exist_ok=True)
+            lasgo_local = str(Path(lasgo_local_dir) / lasgo_name)
+            with open(lasgo_local, "wb") as f:
+                ftp_l.retrbinary(f"RETR {lasgo_name}", f.write)
+            print(
+                f"[LASGO(catalog)] Downloaded: {lasgo_remote_dir.rstrip('/')}/{lasgo_name} -> {lasgo_local}"
+            )
+            scan_after_supplier_fetch(lasgo_local, "LASGO(catalog)")
+            lasgo_status = "success"
     finally:
         try:
             ftp_l.quit()
@@ -445,38 +507,51 @@ def run_catalog_fetch_strict(*, env_file: str = ".env", write_fetch_env: str) ->
     try:
         chosen_m = choose_latest_file(ftp_m, moovies_remote_dir, moovies_pattern)
         if chosen_m is None:
-            print(f"No Files to Process in path - {moovies_remote_dir}")
-            raise SystemExit(1)
-        moovies_name, _ = chosen_m
-        Path(moovies_local_dir).mkdir(parents=True, exist_ok=True)
-        moovies_local = str(Path(moovies_local_dir) / moovies_name)
-        # Same as Lasgo: already in moovies_remote_dir after choose_latest_file.
-        with open(moovies_local, "wb") as f:
-            ftp_m.retrbinary(f"RETR {moovies_name}", f.write)
-        print(
-            f"[MOOVIES(catalog)] Downloaded: {moovies_remote_dir.rstrip('/')}/{moovies_name} -> {moovies_local}"
-        )
-        from app.services.file_security_scan import scan_after_supplier_fetch
-
-        scan_after_supplier_fetch(moovies_local, "MOOVIES(catalog)")
-
-        lines = [
-            f"MOOVIES_FILE={shlex.quote(moovies_local)}",
-            f"LASGO_FILE={shlex.quote(lasgo_local)}",
-            f"CATALOG_FTP_MOOVIES_REMOTE={moovies_remote_dir}",
-            f"CATALOG_FTP_MOOVIES_FILE={shlex.quote(moovies_name)}",
-            f"CATALOG_FTP_LASGO_REMOTE={lasgo_remote_dir}",
-            f"CATALOG_FTP_LASGO_FILE={shlex.quote(lasgo_name)}",
-        ]
-        out_p = Path(write_fetch_env)
-        out_p.parent.mkdir(parents=True, exist_ok=True)
-        out_p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"Wrote fetch manifest for archive step: {write_fetch_env}")
+            print(
+                f"[MOOVIES(catalog)] No catalog files to process (skipped) — remote path {moovies_remote_dir} "
+                f"(pattern {moovies_pattern!r})"
+            )
+        else:
+            moovies_name, _ = chosen_m
+            Path(moovies_local_dir).mkdir(parents=True, exist_ok=True)
+            moovies_local = str(Path(moovies_local_dir) / moovies_name)
+            with open(moovies_local, "wb") as f:
+                ftp_m.retrbinary(f"RETR {moovies_name}", f.write)
+            print(
+                f"[MOOVIES(catalog)] Downloaded: {moovies_remote_dir.rstrip('/')}/{moovies_name} -> {moovies_local}"
+            )
+            scan_after_supplier_fetch(moovies_local, "MOOVIES(catalog)")
+            moovies_status = "success"
     finally:
         try:
             ftp_m.quit()
         except Exception:
             ftp_m.close()
+
+    lines = [
+        f"CATALOG_SOURCE_LASGO_STATUS={lasgo_status}",
+        f"CATALOG_SOURCE_MOOVIES_STATUS={moovies_status}",
+    ]
+    if lasgo_status == "success" and lasgo_local:
+        lines.append(f"LASGO_FILE={shlex.quote(lasgo_local)}")
+        lines.append(f"CATALOG_FTP_LASGO_REMOTE={lasgo_remote_dir}")
+        lines.append(f"CATALOG_FTP_LASGO_FILE={shlex.quote(lasgo_name)}")
+    else:
+        lines.append("LASGO_FILE=")
+
+    if moovies_status == "success" and moovies_local:
+        lines.append(f"MOOVIES_FILE={shlex.quote(moovies_local)}")
+        lines.append(f"CATALOG_FTP_MOOVIES_REMOTE={moovies_remote_dir}")
+        lines.append(f"CATALOG_FTP_MOOVIES_FILE={shlex.quote(moovies_name)}")
+    else:
+        lines.append("MOOVIES_FILE=")
+
+    out_p = Path(write_fetch_env)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Wrote fetch manifest for archive step: {write_fetch_env}")
+
+    print(f"CATALOG_SYNC_SOURCE_STATUS lasgo={lasgo_status} moovies={moovies_status}")
 
 
 def run_fetch(*, env_file: str = ".env", mode: FetchMode = "stock") -> None:
@@ -561,7 +636,8 @@ def run_from_argv(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--strict-catalog",
         action="store_true",
-        help="Catalog mode only: require FTP files under TAPE_Film .../Catalog (no local fallback); exit if empty.",
+        help="Catalog mode only: FTP under TAPE_Film .../Catalog (no local fallback). "
+        "Missing files for a source are skipped_no_files (non-fatal); manifest still written.",
     )
     parser.add_argument(
         "--write-fetch-env",

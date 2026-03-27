@@ -40,6 +40,10 @@ class PipelineRun:
     has_operational_totals: bool = False
     operational_inserted: int = 0
     operational_updated: int = 0
+    # Catalog sync per-source fetch outcome (from step 00 / final summary)
+    catalog_source_lasgo_status: Optional[str] = None
+    catalog_source_moovies_status: Optional[str] = None
+    catalog_sync_summary: Optional[str] = None
 
 
 STEP_PATTERN = re.compile(r"\[step (\d+)\]\s*(.*)")
@@ -69,6 +73,14 @@ APPEND_HISTORY_OK_PATTERN = re.compile(
 # Catalog upsert final line (logged by both pipelines; stock sync logs it as step 04)
 OPERATIONAL_SYNC_PATTERN = re.compile(
     r"Operational sync complete\.\s*inserted=(\d+)\s+updated=(\d+)",
+    re.IGNORECASE,
+)
+CATALOG_SYNC_SOURCE_STATUS_PATTERN = re.compile(
+    r"CATALOG_SYNC_SOURCE_STATUS\s+lasgo=(\S+)\s+moovies=(\S+)",
+    re.IGNORECASE,
+)
+CATALOG_SYNC_SUMMARY_LINE_PATTERN = re.compile(
+    r"^CATALOG_SYNC_SUMMARY:\s*(.+?)\s*$",
     re.IGNORECASE,
 )
 
@@ -189,6 +201,15 @@ def _parse_run_chunk(lines: List[str], filepath: str) -> PipelineRun:
             # Historic logs: step 08 ran before the shell wrote the completion banner.
             if not run.completed:
                 run.completed = True
+
+        css = CATALOG_SYNC_SOURCE_STATUS_PATTERN.search(line)
+        if css:
+            run.catalog_source_lasgo_status = css.group(1).strip().lower()
+            run.catalog_source_moovies_status = css.group(2).strip().lower()
+
+        csum = CATALOG_SYNC_SUMMARY_LINE_PATTERN.match(line.strip())
+        if csum:
+            run.catalog_sync_summary = csum.group(1).strip()
 
     if current_step:
         current_step.completed = True

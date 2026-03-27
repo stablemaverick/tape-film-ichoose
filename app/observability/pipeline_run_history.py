@@ -39,7 +39,7 @@ def build_history_record(
     com = metrics.get("commercial", {})
     exc = metrics.get("exceptions", {})
 
-    return {
+    rec: Dict[str, Any] = {
         "timestamp": metrics.get("generated_at"),
         "pipeline_type": ptype,
         "log_file": run.log_file,
@@ -59,6 +59,13 @@ def build_history_record(
         "health_exit_code": metrics.get("exit_code"),
         "lock_encountered": run.lock_encountered,
     }
+    if run.catalog_sync_summary:
+        rec["catalog_sync_summary"] = run.catalog_sync_summary
+    if run.catalog_source_lasgo_status:
+        rec["catalog_source_lasgo_status"] = run.catalog_source_lasgo_status
+    if run.catalog_source_moovies_status:
+        rec["catalog_source_moovies_status"] = run.catalog_source_moovies_status
+    return rec
 
 
 def append_pipeline_run_record(

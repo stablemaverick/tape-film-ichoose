@@ -26,8 +26,9 @@ set -euo pipefail
 #   LASGO_CATALOG_GLOB     filename pattern under LASGO_CATALOG_DIR (default: LASGO_*)
 #   Do NOT set MOOVIES_DIR / LASGO_DIR for this script — they are ignored (avoids picking stock folders).
 #   FTP defaults: /TAPE_Film/Moovies/Catalog and /TAPE_Film/Lasgo/Catalog (override *_CATALOG_REMOTE_DIR in .env).
-#   With FTP: strict fetch only — no local fallback; empty folder → "No Files to Process in path - <path>".
-#   After a successful run, those files are moved on FTP to .../Catalog/Archive.
+#   With FTP: strict fetch only — no local fallback. Empty remote folder for a source is a clean no-op
+#   (CATALOG_SOURCE_*_STATUS=skipped_no_files); the job continues, reports, and exits 0.
+#   Fetched files are moved on FTP to .../Catalog/Archive when present.
 #   SKIP_FTP=1: use local MOOVIES_CATALOG_DIR/LASGO_CATALOG_DIR only; no FTP archive.
 #
 # Lasgo SFTP → FTP mirror (optional, inside step 00 before strict catalog fetch; same host/user as stock):
@@ -127,35 +128,42 @@ if [[ "${SKIP_FTP:-0}" == "1" ]]; then
   LASGO_FILE="${LASGO_FILE:-$(pick_latest "${LASGO_CATALOG_DIR}" "${LASGO_CATALOG_GLOB}")}"
 fi
 
-if [[ -z "${MOOVIES_FILE:-}" || ! -f "${MOOVIES_FILE}" ]]; then
-  echo "ERROR: Cannot resolve Moovies catalog file."
-  echo "  Looked in: MOOVIES_CATALOG_DIR=${MOOVIES_CATALOG_DIR}  glob: ${MOOVIES_CATALOG_GLOB}"
-  if [[ -d "${MOOVIES_CATALOG_DIR}" ]]; then
-    echo "  Directory listing:"
-    ls -lat "${MOOVIES_CATALOG_DIR}" 2>/dev/null | head -25 || true
-  else
-    echo "  Directory missing: ${MOOVIES_CATALOG_DIR}"
-  fi
-  echo "  Fix: place catalog exports under MOOVIES_CATALOG_DIR or set MOOVIES_FILE=/absolute/path"
-  exit 1
+# Per-source status derived from resolved paths (must match fetch manifest when using FTP).
+if [[ -n "${MOOVIES_FILE:-}" && -f "${MOOVIES_FILE}" ]]; then
+  CATALOG_SOURCE_MOOVIES_STATUS="success"
+else
+  CATALOG_SOURCE_MOOVIES_STATUS="skipped_no_files"
+  MOOVIES_FILE=""
 fi
-if [[ -z "${LASGO_FILE:-}" || ! -f "${LASGO_FILE}" ]]; then
-  echo "ERROR: Cannot resolve Lasgo catalog file."
-  echo "  Looked in: LASGO_CATALOG_DIR=${LASGO_CATALOG_DIR}  glob: ${LASGO_CATALOG_GLOB}"
-  if [[ -d "${LASGO_CATALOG_DIR}" ]]; then
-    echo "  Directory listing:"
-    ls -lat "${LASGO_CATALOG_DIR}" 2>/dev/null | head -25 || true
-  else
-    echo "  Directory missing: ${LASGO_CATALOG_DIR}"
+if [[ -n "${LASGO_FILE:-}" && -f "${LASGO_FILE}" ]]; then
+  CATALOG_SOURCE_LASGO_STATUS="success"
+else
+  CATALOG_SOURCE_LASGO_STATUS="skipped_no_files"
+  LASGO_FILE=""
+fi
+export MOOVIES_FILE LASGO_FILE CATALOG_SOURCE_MOOVIES_STATUS CATALOG_SOURCE_LASGO_STATUS
+
+if [[ "${CATALOG_SOURCE_MOOVIES_STATUS}" == "skipped_no_files" ]]; then
+  echo "WARN: No Moovies catalog file for this run (skipped_no_files)."
+  echo "  MOOVIES_CATALOG_DIR=${MOOVIES_CATALOG_DIR}  glob: ${MOOVIES_CATALOG_GLOB}"
+  if [[ -d "${MOOVIES_CATALOG_DIR}" ]]; then
+    ls -lat "${MOOVIES_CATALOG_DIR}" 2>/dev/null | head -15 || true
   fi
-  echo "  Fix: place catalog exports under LASGO_CATALOG_DIR or set LASGO_FILE=/absolute/path"
-  exit 1
+fi
+if [[ "${CATALOG_SOURCE_LASGO_STATUS}" == "skipped_no_files" ]]; then
+  echo "WARN: No Lasgo catalog file for this run (skipped_no_files)."
+  echo "  LASGO_CATALOG_DIR=${LASGO_CATALOG_DIR}  glob: ${LASGO_CATALOG_GLOB}"
+  if [[ -d "${LASGO_CATALOG_DIR}" ]]; then
+    ls -lat "${LASGO_CATALOG_DIR}" 2>/dev/null | head -15 || true
+  fi
 fi
 
 echo "MOOVIES_CATALOG_DIR=${MOOVIES_CATALOG_DIR} MOOVIES_CATALOG_GLOB=${MOOVIES_CATALOG_GLOB}"
 echo "LASGO_CATALOG_DIR=${LASGO_CATALOG_DIR} LASGO_CATALOG_GLOB=${LASGO_CATALOG_GLOB}"
-echo "MOOVIES_FILE=${MOOVIES_FILE}"
-echo "LASGO_FILE=${LASGO_FILE}"
+echo "MOOVIES_FILE=${MOOVIES_FILE:-}"
+echo "LASGO_FILE=${LASGO_FILE:-}"
+echo "CATALOG_SOURCE_MOOVIES_STATUS=${CATALOG_SOURCE_MOOVIES_STATUS}"
+echo "CATALOG_SOURCE_LASGO_STATUS=${CATALOG_SOURCE_LASGO_STATUS}"
 
 MOOVIES_LIMIT_ARGS=()
 LASGO_LIMIT_ARGS=()
@@ -166,19 +174,27 @@ if [[ "${#MOOVIES_LIMIT_ARGS[@]}" -gt 0 || "${#LASGO_LIMIT_ARGS[@]}" -gt 0 ]]; t
 fi
 
 # Step 01 — Import Moovies raw
-echo "[step 01] Import Moovies raw (full)"
-if [[ "${#MOOVIES_LIMIT_ARGS[@]}" -gt 0 ]]; then
-  "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full "${MOOVIES_LIMIT_ARGS[@]}"
+if [[ -n "${MOOVIES_FILE:-}" && -f "${MOOVIES_FILE}" ]]; then
+  echo "[step 01] Import Moovies raw (full)"
+  if [[ "${#MOOVIES_LIMIT_ARGS[@]}" -gt 0 ]]; then
+    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full "${MOOVIES_LIMIT_ARGS[@]}"
+  else
+    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full
+  fi
 else
-  "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full
+  echo "[step 01] Import Moovies raw (full) — SKIPPED (no file; status=${CATALOG_SOURCE_MOOVIES_STATUS})"
 fi
 
 # Step 02 — Import Lasgo raw
-echo "[step 02] Import Lasgo raw (full, Blu-ray only)"
-if [[ "${#LASGO_LIMIT_ARGS[@]}" -gt 0 ]]; then
-  "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full "${LASGO_LIMIT_ARGS[@]}"
+if [[ -n "${LASGO_FILE:-}" && -f "${LASGO_FILE}" ]]; then
+  echo "[step 02] Import Lasgo raw (full, Blu-ray only)"
+  if [[ "${#LASGO_LIMIT_ARGS[@]}" -gt 0 ]]; then
+    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full "${LASGO_LIMIT_ARGS[@]}"
+  else
+    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full
+  fi
 else
-  "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full
+  echo "[step 02] Import Lasgo raw (full, Blu-ray only) — SKIPPED (no file; status=${CATALOG_SOURCE_LASGO_STATUS})"
 fi
 
 # Step 03 — Normalize
@@ -255,6 +271,15 @@ if [[ "${SKIP_FTP:-0}" != "1" && -f "${FETCH_ENV}" ]]; then
     echo "WARN: FTP archive (07b) failed — catalog sync completed; move files to Archive manually if needed."
   fi
 fi
+
+# One-line outcome for observability, history JSON, and Slack wrappers (grep CATALOG_SYNC_SUMMARY).
+CATALOG_SYNC_SUMMARY_LINE="$(
+  CATALOG_SOURCE_LASGO_STATUS="${CATALOG_SOURCE_LASGO_STATUS:-skipped_no_files}" \
+  CATALOG_SOURCE_MOOVIES_STATUS="${CATALOG_SOURCE_MOOVIES_STATUS:-skipped_no_files}" \
+    "${PYTHON}" -c "import os; from app.services.supplier_fetch_service import catalog_sync_source_summary_message; print(catalog_sync_source_summary_message(lasgo=os.environ.get('CATALOG_SOURCE_LASGO_STATUS', 'skipped_no_files'), moovies=os.environ.get('CATALOG_SOURCE_MOOVIES_STATUS', 'skipped_no_files')))"
+)"
+echo "CATALOG_SYNC_SUMMARY: ${CATALOG_SYNC_SUMMARY_LINE}"
+printf '%s\n' "${CATALOG_SYNC_SUMMARY_LINE}" > "${LOCK_DIR}/catalog_sync_last_summary.txt"
 
 # Completion banner BEFORE observability append so parse_log_file sees end timestamp + completed.
 echo "================================================================="

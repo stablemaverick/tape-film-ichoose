@@ -45,11 +45,16 @@ _MANIFEST_KEYS = (
 
 def _parse_manifest(path: str) -> dict[str, str]:
     data = _read_kv_file(path)
-    missing = [k for k in _MANIFEST_KEYS if not data.get(k)]
-    if missing:
-        print(f"Missing keys in {path}: {', '.join(missing)}", file=sys.stderr)
+    out = {k: (data.get(k) or "").strip().strip("'\"") for k in _MANIFEST_KEYS}
+    moovies_ok = bool(out["CATALOG_FTP_MOOVIES_REMOTE"] and out["CATALOG_FTP_MOOVIES_FILE"])
+    lasgo_ok = bool(out["CATALOG_FTP_LASGO_REMOTE"] and out["CATALOG_FTP_LASGO_FILE"])
+    if not moovies_ok and not lasgo_ok:
+        print(
+            f"No archiveable supplier in {path} (need at least one of Moovies or Lasgo remote+file).",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
-    return {k: data[k] for k in _MANIFEST_KEYS}
+    return out
 
 
 def _manifest_from_cli(args: argparse.Namespace) -> dict[str, str] | None:
@@ -215,7 +220,10 @@ def main() -> int:
 
     if args.apply:
         if args.only != "both":
-            print("--apply with --only is not supported; archive moves both files from manifest.", file=sys.stderr)
+            print(
+                "--apply with --only is not supported; archive uses the full manifest (partial ok).",
+                file=sys.stderr,
+            )
             raise SystemExit(2)
         tmp = _write_manifest_temp(manifest)
         try:
@@ -234,7 +242,9 @@ def main() -> int:
     print(f"Dry-run: manifest source {fetch_env}")
     print(f"Archive subdir: {CATALOG_FTP_ARCHIVE_SUBDIR!r}")
     all_ok = True
-    if args.only in ("lasgo", "both"):
+    if args.only in ("lasgo", "both") and manifest.get("CATALOG_FTP_LASGO_REMOTE") and manifest.get(
+        "CATALOG_FTP_LASGO_FILE"
+    ):
         ftp_l = build_ftp_client(supplier="lasgo")
         try:
             all_ok = dry_run_pair(
@@ -248,7 +258,11 @@ def main() -> int:
                 ftp_l.quit()
             except Exception:
                 ftp_l.close()
-    if args.only in ("moovies", "both"):
+    elif args.only == "lasgo":
+        print("Dry-run: Lasgo skipped (no Lasgo remote/file in manifest).")
+    if args.only in ("moovies", "both") and manifest.get("CATALOG_FTP_MOOVIES_REMOTE") and manifest.get(
+        "CATALOG_FTP_MOOVIES_FILE"
+    ):
         ftp_m = build_ftp_client(supplier="moovies")
         try:
             all_ok = dry_run_pair(
@@ -262,6 +276,8 @@ def main() -> int:
                 ftp_m.quit()
             except Exception:
                 ftp_m.close()
+    elif args.only == "moovies":
+        print("Dry-run: Moovies skipped (no Moovies remote/file in manifest).")
 
     print()
     if all_ok:

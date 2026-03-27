@@ -1,5 +1,24 @@
 import { supabase } from "../lib/supabase.server";
 
+/** Supabase-like client for tests (sequential mock) */
+export type IntelligenceSearchDb = typeof supabase;
+import {
+  detectFormat as detectFormatFacet,
+  detectFranchise,
+  detectGenre as detectGenreFacet,
+  detectLatestIntent,
+  detectStudio as detectStudioFacet,
+  detectYearOrDecade as detectYearOrDecadeFacet,
+  stripDetectedFacetsFromQuery,
+} from "../lib/search-query-facets.server";
+import {
+  getOfferRankingBucket,
+  isFutureRelease,
+  rankOffer,
+  rankOfferWithPreferences,
+  sortFilmsWithOffersFinal,
+} from "../lib/film-offer-ranking.server";
+
 type FilmRow = {
   id: string;
   title: string;
@@ -139,123 +158,6 @@ function normalizeOffer(offer: OfferRow) {
   };
 }
 
-function detectFormat(query: string) {
-  const q = normalize(query);
-
-  if (q.includes("4k") || q.includes("uhd")) {
-    return "4k";
-  }
-
-  if (q.includes("blu ray") || q.includes("bluray") || q.includes("blu-ray")) {
-    return "blu-ray";
-  }
-
-  if (q.includes("dvd")) {
-    return "dvd";
-  }
-
-  return null;
-}
-
-function detectStudio(query: string) {
-  const q = normalize(query);
-
-  const studios = [
-    { key: "arrow", value: "arrow" },
-    { key: "criterion", value: "criterion" },
-    { key: "second sight", value: "second sight" },
-    { key: "radiance", value: "radiance" },
-    { key: "eureka", value: "eureka" },
-    { key: "88 films", value: "88 films" },
-    { key: "vinegar syndrome", value: "vinegar syndrome" },
-    { key: "severin", value: "severin" },
-    { key: "imprint", value: "imprint" },
-    { key: "studio canal", value: "studio canal" },
-    { key: "studiocanal", value: "studiocanal" },
-  ];
-
-  for (const studio of studios) {
-    if (q.includes(studio.key)) {
-      return studio.value;
-    }
-  }
-
-  return null;
-}
-
-
-function detectGenre(query: string) {
-  const q = normalize(query);
-
-  const genres = [
-    { pattern: /\bgiallo\b/i, value: "Thriller" },
-    { pattern: /\bhorror\b/i, value: "Horror" },
-    { pattern: /\bthriller\b/i, value: "Thriller" },
-    { pattern: /\bcrime\b/i, value: "Crime" },
-    { pattern: /\bdrama\b/i, value: "Drama" },
-    { pattern: /\baction\b/i, value: "Action" },
-    { pattern: /\bcomedy\b/i, value: "Comedy" },
-    { pattern: /\bromance\b/i, value: "Romance" },
-    { pattern: /\bwar\b/i, value: "War" },
-    { pattern: /\bwestern\b/i, value: "Western" },
-    { pattern: /\banimation\b/i, value: "Animation" },
-    { pattern: /\bfantasy\b/i, value: "Fantasy" },
-    { pattern: /\bmystery\b/i, value: "Mystery" },
-    { pattern: /\bsci fi\b/i, value: "Science Fiction" },
-    { pattern: /\bsci-fi\b/i, value: "Science Fiction" },
-    { pattern: /\bscience fiction\b/i, value: "Science Fiction" },
-    { pattern: /\bdocumentary\b/i, value: "Documentary" },
-    { pattern: /\bmusic\b/i, value: "Music" },
-  ];
-
-  for (const genre of genres) {
-    if (genre.pattern.test(q)) {
-      return genre.value;
-    }
-  }
-
-  return null;
-}
-function detectYearOrDecade(query: string) {
-  const q = normalize(query);
-
-  const yearMatch = q.match(/\b(19|20)\d{2}\b/);
-  if (yearMatch) {
-    return {
-      exactYear: Number(yearMatch[0]),
-      decadeStart: null as number | null,
-    };
-  }
-
-  const decadeMatch = q.match(/\b(19|20)\d0'?s\b/);
-  if (decadeMatch) {
-    const decade = decadeMatch[0].replace(/'s|s/gi, "");
-    return {
-      exactYear: null as number | null,
-      decadeStart: Number(decade),
-    };
-  }
-
-  const shortDecadeMatch = q.match(/\b\d0s\b/);
-  if (shortDecadeMatch) {
-    const short = shortDecadeMatch[0].replace("s", "");
-    const decadeNum = Number(short);
-
-    if (decadeNum >= 20 && decadeNum <= 90) {
-      const century = decadeNum <= 20 ? 2000 : 1900;
-      return {
-        exactYear: null as number | null,
-        decadeStart: century + decadeNum,
-      };
-    }
-  }
-
-  return {
-    exactYear: null as number | null,
-    decadeStart: null as number | null,
-  };
-}
-
 function extractReleaseYear(dateValue: string | null | undefined) {
   if (!dateValue) return null;
 
@@ -288,104 +190,6 @@ function filmMatchesYearOrDecade(
   return true;
 }
 
-function isStudioBrowseQuery(
-  query: string,
-  requestedStudio: string | null,
-  requestedFormat: string | null,
-) {
-  const q = normalize(query);
-
-  if (!requestedStudio) return false;
-
-  let cleaned = q
-    .replace(/arrow/gi, "")
-    .replace(/criterion/gi, "")
-    .replace(/second sight/gi, "")
-    .replace(/radiance/gi, "")
-    .replace(/eureka/gi, "")
-    .replace(/88 films/gi, "")
-    .replace(/vinegar syndrome/gi, "")
-    .replace(/severin/gi, "")
-    .replace(/imprint/gi, "")
-    .replace(/studio canal/gi, "")
-    .replace(/studiocanal/gi, "")
-    .replace(/collection/gi, "")
-    .replace(/films/gi, "")
-    .replace(/latest/gi, "")
-    .replace(/\bnew\b/gi, "")
-    .replace(/recent/gi, "")
-    .replace(/releases/gi, "")
-    .replace(/titles/gi, "");
-
-  if (requestedFormat === "4k") {
-    cleaned = cleaned.replace(/4k|uhd/gi, "");
-  }
-
-  if (requestedFormat === "blu-ray") {
-    cleaned = cleaned.replace(/blu[\s-]?ray/gi, "");
-  }
-  
-  if (requestedFormat === "blu ray") {
-    cleaned = cleaned.replace(/blu[\s-]?ray/gi, "");
-  }
-
-  if (requestedFormat === "dvd") {
-    cleaned = cleaned.replace(/dvd/gi, "");
-  }
-
-  cleaned = cleaned.trim();
-
-  return cleaned === "";
-}
-
-function detectLatestQuery(query: string) {
-  const q = normalize(query);
-
-  return (
-    q.includes("latest") ||
-    q.includes("new") ||
-    q.includes("recent")
-  );
-}
-
-function isFutureRelease(value: string | null | undefined) {
-  if (!value) return false;
-
-  const ts = new Date(value).getTime();
-  if (Number.isNaN(ts)) return false;
-
-  return ts > Date.now();
-}
-
-function getOfferRankingBucket(offer: OfferRow) {
-  const isShopify = !!offer.shopify_variant_id || !!offer.shopify_product_id;
-  const supplierStock = Number(offer.supplier_stock_status || 0);
-  const futureRelease = isFutureRelease(offer.media_release_date);
-
-  if (futureRelease) return "preorder";
-  if (isShopify) return "store_in_stock";
-  if (supplierStock > 0) return "supplier_in_stock";
-  return "out_of_stock";
-}
-
-function rankOffer(offer: OfferRow) {
-  const bucket = getOfferRankingBucket(offer);
-
-  if (bucket === "store_in_stock") return 1;
-  if (bucket === "supplier_in_stock") return 2;
-  if (bucket === "preorder") return 3;
-
-  return 5;
-}
-
-function releaseDateValue(value: string | null | undefined) {
-    if (!value) return 0;
-  
-    const ts = new Date(value).getTime();
-    return Number.isNaN(ts) ? 0 : ts;
-  }
-  
-  
 function explainFilmMatch(
   film: FilmRow,
   searchTerm: string,
@@ -434,20 +238,25 @@ function explainOffer(
 ) {
   const reasons: string[] = [];
 
-  const isShopify = !!offer.shopify_variant_id || !!offer.shopify_product_id;
   const format = normalize(offer.format);
   const studio = normalize(offer.studio);
-  const supplierStock = Number(offer.supplier_stock_status || 0);
   const futureRelease = isFutureRelease(offer.media_release_date);
+  const bucket = getOfferRankingBucket(offer);
+  const listedShopify =
+    !!offer.shopify_variant_id || !!offer.shopify_product_id;
 
-  if (isShopify && !futureRelease) {
-    reasons.push("Shopify/store offer available now");
-  } else if (supplierStock > 0 && !futureRelease) {
-    reasons.push("Supplier offer in stock");
-  } else if (futureRelease) {
+  if (bucket === "store_in_stock") {
+    reasons.push("Confirmed in stock (store inventory / availability_status)");
+  } else if (bucket === "supplier_in_stock") {
+    reasons.push("Available to order from supplier-side stock signals");
+  } else if (bucket === "preorder") {
     reasons.push(`Pre-order / future release (${offer.media_release_date})`);
+  } else if (listedShopify) {
+    reasons.push(
+      "Store listing present — stock not inferred without availability_status=store_stock",
+    );
   } else {
-    reasons.push("Supplier offer currently out of stock");
+    reasons.push("Not currently available from tracked inventory signals");
   }
 
   if (requestedFormat && format.includes(requestedFormat)) {
@@ -469,40 +278,11 @@ function explainOffer(
   return reasons;
 }
 
-function rankOfferWithPreferences(
-  offer: OfferRow,
-  requestedFormat: string | null,
-  requestedStudio: string | null,
-  latestQuery: boolean,
+async function fetchStudioBrowseFilms(
+  db: IntelligenceSearchDb,
+  requestedStudio: string,
 ) {
-  let score = rankOffer(offer);
-
-  const format = normalize(offer.format);
-  const studio = normalize(offer.studio);
-
-  if (requestedFormat && format.includes(requestedFormat)) {
-    score -= 0.5;
-  }
-
-  if (requestedStudio && studio.includes(requestedStudio)) {
-    score -= 0.75;
-  }
-
-  if (latestQuery && offer.media_release_date) {
-    const releaseTs = releaseDateValue(offer.media_release_date);
-    const nowTs = Date.now();
-    const daysOld = (nowTs - releaseTs) / (1000 * 60 * 60 * 24);
-
-    if (daysOld <= 30) score -= 1.0;
-    else if (daysOld <= 90) score -= 0.6;
-    else if (daysOld <= 180) score -= 0.3;
-  }
-
-  return score;
-}
-
-async function fetchStudioBrowseFilms(requestedStudio: string) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("catalog_items")
     .select(`
       film_id,
@@ -524,7 +304,7 @@ async function fetchStudioBrowseFilms(requestedStudio: string) {
 
   if (!filmIds.length) return [];
 
-  const { data: filmData, error: filmError } = await supabase
+  const { data: filmData, error: filmError } = await db
     .from("films")
     .select(`
       id,
@@ -546,11 +326,12 @@ async function fetchStudioBrowseFilms(requestedStudio: string) {
 
 
 async function fetchGenreYearBrowseFilms(
+  db: IntelligenceSearchDb,
   requestedGenre: string | null,
   exactYear: number | null,
   decadeStart: number | null,
 ) {
-  let query = supabase
+  let query = db
     .from("films")
     .select(`
       id,
@@ -588,122 +369,144 @@ async function fetchGenreYearBrowseFilms(
 }
 
 
-export async function loader({ request }: { request: Request }) {
+export async function runIntelligenceSearch(
+  request: Request,
+  db: IntelligenceSearchDb = supabase,
+) {
   try {
     const url = new URL(request.url);
     const q = url.searchParams.get("q")?.trim() || "";
+    const titleParam = url.searchParams.get("title")?.trim() || "";
     const genreParam = url.searchParams.get("genre")?.trim() || null;
     const decadeParam = url.searchParams.get("decade")?.trim() || null;
+    const yearParam = url.searchParams.get("year")?.trim() || null;
     const studioParam = url.searchParams.get("studio")?.trim() || null;
     const personParam = url.searchParams.get("person")?.trim() || null;
-    
-    if (!q) {
-          return Response.json({
-            query: q,
-            films: [],
-          });
-        }
-    
-    const requestedFormat = detectFormat(q);
-    
-    const requestedStudio = studioParam || detectStudio(q);
-    const requestedGenre = genreParam || detectGenre(q);
-    
-    const parsedYearDecade = detectYearOrDecade(q);
-    const exactYear = parsedYearDecade.exactYear;
-    const decadeStart = decadeParam ? Number(decadeParam) : parsedYearDecade.decadeStart;
-    
-    const latestQuery = detectLatestQuery(q);
+    const personRoleParam = (
+      url.searchParams.get("personRole")?.trim() || "any"
+    ).toLowerCase();
+    const formatParam = url.searchParams.get("format")?.trim() || null;
+    const franchiseParam = url.searchParams.get("franchise")?.trim() || null;
+    const latestParam = url.searchParams.get("latest") === "true";
 
-    
-    let filmQuery = q;
-    
-    if (requestedFormat === "4k") {
-      filmQuery = filmQuery.replace(/4k|uhd/gi, "").trim();
+    const facetSource = [q, titleParam].filter(Boolean).join(" ").trim();
+
+    const hasFocus =
+      !!q ||
+      !!titleParam ||
+      !!studioParam ||
+      !!genreParam ||
+      !!decadeParam ||
+      !!yearParam ||
+      !!personParam ||
+      !!franchiseParam;
+
+    if (!hasFocus) {
+      return Response.json({
+        query: q,
+        films: [],
+      });
     }
-    
-    if (requestedFormat === "blu-ray") {
-      filmQuery = filmQuery.replace(/blu[\s-]?ray/gi, "").trim();
+
+    const requestedFormat =
+      formatParam === "4k" || formatParam === "blu-ray" || formatParam === "dvd"
+        ? formatParam
+        : detectFormatFacet(facetSource || q || titleParam);
+
+    const requestedStudio =
+      studioParam || detectStudioFacet(facetSource || q || titleParam);
+    const requestedGenre =
+      genreParam || detectGenreFacet(facetSource || q || titleParam);
+
+    const parsedYearDecade = detectYearOrDecadeFacet(facetSource || q || titleParam);
+    const exactYear = yearParam
+      ? Number(yearParam)
+      : parsedYearDecade.exactYear;
+    const decadeStart = decadeParam
+      ? Number(decadeParam)
+      : parsedYearDecade.decadeStart;
+
+    const franchiseForStrip =
+      franchiseParam?.toLowerCase() ||
+      detectFranchise(facetSource || q || titleParam);
+
+    const latestQuery =
+      latestParam || detectLatestIntent(facetSource || q || titleParam);
+
+    const strippedResidual = stripDetectedFacetsFromQuery(
+      q || titleParam || "",
+      {
+        format: requestedFormat,
+        studio: requestedStudio,
+        genre: requestedGenre,
+        decadeStart,
+        exactYear,
+        latest: latestQuery,
+        franchise: franchiseForStrip,
+      },
+    ).trim();
+
+    let searchTerm = (titleParam || strippedResidual || q).trim();
+
+    if (
+      !titleParam &&
+      requestedStudio &&
+      searchTerm &&
+      normalize(searchTerm) === normalize(requestedStudio)
+    ) {
+      searchTerm = "";
     }
-    
-    if (requestedFormat === "dvd") {
-      filmQuery = filmQuery.replace(/dvd/gi, "").trim();
+    if (
+      !titleParam &&
+      requestedGenre &&
+      searchTerm &&
+      normalize(searchTerm) === normalize(requestedGenre)
+    ) {
+      searchTerm = "";
     }
-    
-    if (requestedStudio) {
-      filmQuery = filmQuery
-        .replace(/arrow/gi, "")
-        .replace(/criterion/gi, "")
-        .replace(/second sight/gi, "")
-        .replace(/radiance/gi, "")
-        .replace(/eureka/gi, "")
-        .replace(/88 films/gi, "")
-        .replace(/vinegar syndrome/gi, "")
-        .replace(/severin/gi, "")
-        .replace(/imprint/gi, "")
-        .replace(/studio canal/gi, "")
-        .replace(/studiocanal/gi, "")
-        .trim();
-    }
-    
-    if (requestedGenre) {
-  filmQuery = filmQuery
-    .replace(/\bscience fiction\b/gi, "")
-    .replace(/\bsci-fi\b/gi, "")
-    .replace(/\bsci fi\b/gi, "")
-    .replace(/\bhorror\b/gi, "")
-    .replace(/\bthriller\b/gi, "")
-    .replace(/\bcrime\b/gi, "")
-    .replace(/\bdrama\b/gi, "")
-    .replace(/\baction\b/gi, "")
-    .replace(/\bcomedy\b/gi, "")
-    .replace(/\bromance\b/gi, "")
-    .replace(/\bwar\b/gi, "")
-    .replace(/\bwestern\b/gi, "")
-    .replace(/\banimation\b/gi, "")
-    .replace(/\bfantasy\b/gi, "")
-    .replace(/\bmystery\b/gi, "")
-    .replace(/\bdocumentary\b/gi, "")
-    .replace(/\bmusic\b/gi, "")
-    .trim();
-}
-    
-    filmQuery = filmQuery
-      .replace(/\b(19|20)\d{2}\b/g, "")
-      .replace(/\b(19|20)\d0'?s\b/gi, "")
-      .replace(/\b\d0s\b/gi, "")
-      .replace(/\bfrom\b/gi, "")
-      .replace(/latest/gi, "")
-      .replace(/\bnew\b/gi, "")
-      .replace(/recent/gi, "")
-      .replace(/releases/gi, "")
-      .replace(/titles/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    
-    const searchTerm = filmQuery.trim();
-    
+
     const studioBrowseMode =
-      !!requestedStudio && !searchTerm;
-    
+      !!requestedStudio && !searchTerm && !titleParam && !personParam;
+
     const genreYearBrowseMode =
-      !searchTerm && !requestedStudio && (!!requestedGenre || !!exactYear || !!decadeStart);
-    
-    // 1. Search films
+      !searchTerm &&
+      !titleParam &&
+      !requestedStudio &&
+      !personParam &&
+      (!!requestedGenre || !!exactYear || !!decadeStart);
+
     let filmData: FilmRow[] = [];
-    
+
     if (studioBrowseMode && requestedStudio) {
-      filmData = await fetchStudioBrowseFilms(requestedStudio);
+      filmData = await fetchStudioBrowseFilms(db, requestedStudio);
     } else if (genreYearBrowseMode) {
       filmData = await fetchGenreYearBrowseFilms(
+        db,
         requestedGenre,
         exactYear,
         decadeStart,
       );
     } else {
-      const effectiveSearchTerm = personParam || searchTerm || q;
-    
-      const { data, error: filmError } = await supabase
+      const effectiveSearchTerm = (
+        personParam ||
+        searchTerm ||
+        q ||
+        titleParam ||
+        franchiseParam ||
+        ""
+      ).trim();
+
+      if (!effectiveSearchTerm) {
+        return Response.json({
+          query: q || titleParam,
+          format: requestedFormat,
+          studio: requestedStudio,
+          latest: latestQuery,
+          films: [],
+        });
+      }
+
+      const { data, error: filmError } = await db
         .from("films")
         .select(`
           id,
@@ -718,64 +521,92 @@ export async function loader({ request }: { request: Request }) {
           `title.ilike.%${effectiveSearchTerm}%,director.ilike.%${effectiveSearchTerm}%,tmdb_title.ilike.%${effectiveSearchTerm}%,genres.ilike.%${effectiveSearchTerm}%,top_cast.ilike.%${effectiveSearchTerm}%`,
         )
         .limit(50);
-    
+
       if (filmError) {
         return Response.json(
           { error: "Film search failed", details: filmError.message },
           { status: 500 },
         );
       }
-    
+
       filmData = (data || []) as FilmRow[];
     }
-    
+
     let films: FilmRow[] = filmData || [];
-    
-    if (requestedGenre) {
-      films = films.filter((film) =>
-        filmMatchesGenre(film, requestedGenre)
+
+    const debugIntel = process.env.TAPE_AGENT_DEBUG === "1";
+    if (debugIntel) {
+      console.log(
+        "[intelligence-search]",
+        JSON.stringify({
+          q,
+          titleParam,
+          studioParam,
+          genreParam,
+          decadeParam,
+          yearParam,
+          personParam,
+          franchiseParam,
+          searchTerm,
+          studioBrowseMode,
+          genreYearBrowseMode,
+          candidateFilmsBeforeFacetFilter: films.length,
+        }),
       );
     }
-    
+
+    if (requestedGenre) {
+      films = films.filter((film) => filmMatchesGenre(film, requestedGenre));
+    }
+
     if (exactYear || decadeStart) {
       films = films.filter((film) =>
-        filmMatchesYearOrDecade(film, exactYear, decadeStart)
+        filmMatchesYearOrDecade(film, exactYear, decadeStart),
       );
     }
 
-if (!films.length) {
-  return Response.json({
-    query: q,
-    films: [],
-  });
-}
+    if (personParam) {
+      const pn = normalize(personParam);
+      if (personRoleParam === "director") {
+        films = films.filter((film) => normalize(film.director).includes(pn));
+      } else if (personRoleParam === "cast") {
+        films = films.filter((film) => normalize(film.top_cast).includes(pn));
+      }
+    }
 
-const sortedFilms = [...films]
-  .map((film) => ({
-    ...film,
-    _score:
-      (studioBrowseMode || genreYearBrowseMode) && !searchTerm
-        ? 50
-        : scoreFilmMatch(film, searchTerm),
-  }))
-  .sort((a, b) => b._score - a._score)
-  .slice(0, (studioBrowseMode || genreYearBrowseMode) ? 10 : 5);
+    if (!films.length) {
+      return Response.json({
+        query: q || titleParam,
+        films: [],
+      });
+    }
 
-const filmIds = sortedFilms.map((f) => f.id);
+    const scoreTerm = searchTerm;
+    const sortedFilms = [...films]
+      .map((film) => ({
+        ...film,
+        _score:
+          (studioBrowseMode || genreYearBrowseMode) && !scoreTerm
+            ? 50
+            : scoreFilmMatch(film, scoreTerm),
+      }))
+      .sort((a, b) => b._score - a._score)
+      .slice(0, studioBrowseMode || genreYearBrowseMode ? 10 : 5);
 
-const { data: popularityData } = await supabase
-  .from("film_popularity")
-  .select("film_id,popularity_score,orders_count,units_sold,last_sold_at")
-  .in("film_id", filmIds);
+    const filmIds = sortedFilms.map((f) => f.id);
 
-const popularityByFilmId = new Map(
-  (popularityData || []).map((row: any) => [row.film_id, row]),
-);
+    const { data: popularityData } = await db
+      .from("film_popularity")
+      .select("film_id,popularity_score,orders_count,units_sold,last_sold_at")
+      .in("film_id", filmIds);
 
-// 2. Fetch linked offers for all top films
-const { data: offerData, error: offerError } = await supabase
-  .from("catalog_items")
-  .select(`
+    const popularityByFilmId = new Map(
+      (popularityData || []).map((row: any) => [row.film_id, row]),
+    );
+
+    const { data: offerData, error: offerError } = await db
+      .from("catalog_items")
+      .select(`
     id,
     title,
     edition_title,
@@ -795,171 +626,119 @@ const { data: offerData, error: offerError } = await supabase
     active,
     film_id
   `)
-  .in("film_id", filmIds)
-  .eq("active", true)
-  .eq("media_type", "film");
+      .in("film_id", filmIds)
+      .eq("active", true)
+      .eq("media_type", "film");
 
-if (offerError) {
-  return Response.json(
-    { error: "Offer fetch failed", details: offerError.message },
-    { status: 500 },
-  );
-}
+    if (offerError) {
+      return Response.json(
+        { error: "Offer fetch failed", details: offerError.message },
+        { status: 500 },
+      );
+    }
 
-const allOffers: OfferRow[] = ((offerData || []) as OfferRow[]).map(normalizeOffer);
-
-let filmsWithOffers = sortedFilms
-  .map((film) => {
-    const offersForFilm = allOffers.filter((offer) => offer.film_id === film.id);
-    const popularity = popularityByFilmId.get(film.id) || null;
-
-    const shopifyOffers = offersForFilm.filter(
-      (o) => !!o.shopify_variant_id || !!o.shopify_product_id,
+    const allOffers: OfferRow[] = ((offerData || []) as OfferRow[]).map(
+      normalizeOffer,
     );
 
-    const supplierOffers = offersForFilm.filter(
-      (o) => !o.shopify_variant_id && !o.shopify_product_id,
-    );
+    if (debugIntel) {
+      console.log(
+        "[intelligence-search]",
+        JSON.stringify({
+          candidateOffersAfterFetch: allOffers.length,
+        }),
+      );
+    }
 
-    const allCandidateOffers = [...shopifyOffers, ...supplierOffers];
+    let filmsWithOffers = sortedFilms
+      .map((film) => {
+        const offersForFilm = allOffers.filter(
+          (offer) => offer.film_id === film.id,
+        );
+        const popularity = popularityByFilmId.get(film.id) || null;
 
-    const dedupedCandidateOffers = dedupeOffersByBarcode(allCandidateOffers);
-    
-    const rankedOffers = [...dedupedCandidateOffers].sort(
-      (a, b) =>
-        rankOfferWithPreferences(a, requestedFormat, requestedStudio, latestQuery) -
-        rankOfferWithPreferences(b, requestedFormat, requestedStudio, latestQuery),
-    );
+        const shopifyOffers = offersForFilm.filter(
+          (o) => !!o.shopify_variant_id || !!o.shopify_product_id,
+        );
 
-    const bestOffer = rankedOffers[0] || null;
+        const supplierOffers = offersForFilm.filter(
+          (o) => !o.shopify_variant_id && !o.shopify_product_id,
+        );
 
-    return {
-      film: {
-        id: film.id,
-        title: film.title,
-        director: film.director,
-        filmReleased: film.film_released,
-        genres: film.genres,
-        topCast: film.top_cast,
-      },
-      popularity,
-      explanation: explainFilmMatch(
-        film,
-        searchTerm,
-        requestedStudio,
-        latestQuery,
-      ),
-      bestOffer: bestOffer
-        ? {
-            ...bestOffer,
-            rankingBucket: getOfferRankingBucket(bestOffer),
-            explanation: explainOffer(
-              bestOffer,
+        const allCandidateOffers = [...shopifyOffers, ...supplierOffers];
+
+        const dedupedCandidateOffers = dedupeOffersByBarcode(allCandidateOffers);
+
+        const rankedOffers = [...dedupedCandidateOffers].sort(
+          (a, b) =>
+            rankOfferWithPreferences(
+              a,
+              requestedFormat,
+              requestedStudio,
+              latestQuery,
+            ) -
+            rankOfferWithPreferences(
+              b,
               requestedFormat,
               requestedStudio,
               latestQuery,
             ),
-          }
-        : null,
-      offers: rankedOffers.map((offer) => ({
-        ...offer,
-        rankingBucket: getOfferRankingBucket(offer),
-        explanation: explainOffer(
-          offer,
-          requestedFormat,
-          requestedStudio,
-          latestQuery,
-        ),
-      })),
-      score: film._score,
-    };
-  })
-  .filter((item) => item.offers.length > 0);
+        );
 
-if (latestQuery) {
-  const latestBucket = (item: any) => {
-    const offer = item.bestOffer;
-    const supplierStock = Number(offer?.supplier_stock_status || 0);
-    const isShopify = !!offer?.shopify_variant_id || !!offer?.shopify_product_id;
-    const futureRelease = isFutureRelease(offer?.media_release_date);
+        const bestOffer = rankedOffers[0] || null;
 
-    if (futureRelease) return 1;          // pre-orders first
-    if (isShopify) return 2;              // store stock now
-    if (supplierStock > 0) return 3;      // supplier stock now
-    return 4;                             // out of stock last
-  };
+        return {
+          film: {
+            id: film.id,
+            title: film.title,
+            director: film.director,
+            filmReleased: film.film_released,
+            genres: film.genres,
+            topCast: film.top_cast,
+          },
+          popularity,
+          explanation: explainFilmMatch(
+            film,
+            scoreTerm,
+            requestedStudio,
+            latestQuery,
+          ),
+          bestOffer: bestOffer
+            ? {
+                ...bestOffer,
+                rankingBucket: getOfferRankingBucket(bestOffer),
+                explanation: explainOffer(
+                  bestOffer,
+                  requestedFormat,
+                  requestedStudio,
+                  latestQuery,
+                ),
+              }
+            : null,
+          offers: rankedOffers.map((offer) => ({
+            ...offer,
+            rankingBucket: getOfferRankingBucket(offer),
+            explanation: explainOffer(
+              offer,
+              requestedFormat,
+              requestedStudio,
+              latestQuery,
+            ),
+          })),
+          score: film._score,
+        };
+      })
+      .filter((item) => item.offers.length > 0);
 
-  filmsWithOffers = [...filmsWithOffers].sort((a, b) => {
-    const bucketA = latestBucket(a);
-    const bucketB = latestBucket(b);
+    filmsWithOffers = sortFilmsWithOffersFinal(filmsWithOffers, latestQuery);
 
-    if (bucketA !== bucketB) {
-      return bucketA - bucketB;
-    }
-
-    const aDate = releaseDateValue(a.bestOffer?.media_release_date);
-    const bDate = releaseDateValue(b.bestOffer?.media_release_date);
-
-    // For future releases, nearer upcoming dates first
-    if (bucketA === 1) {
-      return aDate - bDate;
-    }
-
-    // For released titles, newest first
-    if (aDate !== bDate) {
-      return bDate - aDate;
-    }
-
-    return b.score - a.score;
-  });
-}
-
-   filmsWithOffers = [...filmsWithOffers].sort((a, b) => {
-     const popularityA = Number(a.popularity?.popularity_score ?? 0);
-     const popularityB = Number(b.popularity?.popularity_score ?? 0);
-   
-     if (latestQuery) {
-       const aBucket = a.bestOffer?.rankingBucket;
-       const bBucket = b.bestOffer?.rankingBucket;
-   
-       if (aBucket !== bBucket) {
-         const bucketOrder = {
-           preorder: 1,
-           store_in_stock: 2,
-           supplier_in_stock: 3,
-           out_of_stock: 4,
-         } as Record<string, number>;
-   
-         return (bucketOrder[aBucket || "out_of_stock"] ?? 99) -
-                (bucketOrder[bBucket || "out_of_stock"] ?? 99);
-       }
-   
-       const aDate = releaseDateValue(a.bestOffer?.media_release_date);
-       const bDate = releaseDateValue(b.bestOffer?.media_release_date);
-   
-       if (aBucket === "preorder" && aDate !== bDate) {
-         return aDate - bDate;
-       }
-   
-       if (aDate !== bDate) {
-         return bDate - aDate;
-       }
-     }
-   
-     if (popularityA !== popularityB) {
-       return popularityB - popularityA;
-     }
-   
-     return b.score - a.score;
-   });
-
-return Response.json({
-  query: q,
-  format: requestedFormat,
-  studio: requestedStudio,
-  latest: latestQuery,
-  films: filmsWithOffers,
-});
+    return Response.json({
+      query: q || titleParam,
+      format: requestedFormat,
+      studio: requestedStudio,
+      latest: latestQuery,
+      films: filmsWithOffers,
+    });
 
   } catch (error) {
     return Response.json(
@@ -970,4 +749,8 @@ return Response.json({
       { status: 500 },
     );
   }
+}
+
+export async function loader({ request }: { request: Request }) {
+  return runIntelligenceSearch(request);
 }

@@ -143,6 +143,16 @@ if [[ -z "${final_line}" ]]; then
     final_line="❌ ${JOB_LABEL} FAILURE host=${HOST} exit_code=${exit_code}"
   fi
 fi
+
+# Human catalog outcome (written by pipeline/run_catalog_sync.sh on success paths)
+CATALOG_SUMMARY_TAIL=""
+if [[ -r "${ROOT}/.locks/catalog_sync_last_summary.txt" ]]; then
+  CATALOG_SUMMARY_TAIL="$(tr -d '\r\n' < "${ROOT}/.locks/catalog_sync_last_summary.txt" || true)"
+fi
+if [[ -n "${CATALOG_SUMMARY_TAIL}" ]]; then
+  final_line="${final_line} — ${CATALOG_SUMMARY_TAIL}"
+fi
+
 "${NOTIFY}" "${final_line}"
 
 exit "${exit_code}"

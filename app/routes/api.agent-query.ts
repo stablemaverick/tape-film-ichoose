@@ -1,4 +1,10 @@
 import { parseQueryWithLLM } from "../lib/query-parser.server";
+import {
+  getAvailabilityMode,
+  mergeLlmTapeAgentParse,
+  parseTapeAgentQueryDeterministic,
+  type StructuredTapeAgentParse,
+} from "../lib/tape-agent-query-parser.server";
 
 function normalizeText(text: string) {
   return text.trim().toLowerCase();
@@ -85,6 +91,13 @@ function buildSalesReply({
 
   if (intent === "availability") {
     reply = `${title} is currently ${availability.toLowerCase()}.`;
+  }
+
+  if (intent === "release_date") {
+    const when = recommendedOption.mediaReleaseDate;
+    reply = when
+      ? `For "${message}", our catalog shows a media release date of ${when} for ${title}.`
+      : `I found ${title} for "${message}", but there isn’t a clear media release date in our catalog yet.`;
   }
 
   if (recommendedOption.availability === "store_stock") {
@@ -383,6 +396,41 @@ function buildRecommendationReason(opt: any) {
   return "Best option based on current ranking.";
 }
 
+function commercialIntent(sp: StructuredTapeAgentParse) {
+  switch (sp.primaryIntent) {
+    case "release_date":
+    case "availability":
+    case "preorder":
+    case "best_edition":
+    case "person":
+      return sp.primaryIntent;
+    default:
+      return "search";
+  }
+}
+
+function applyStructuredFacetsToSearchUrl(
+  url: URL,
+  structured: StructuredTapeAgentParse,
+  opts?: { omitFranchise?: boolean },
+) {
+  const f = structured.facets;
+  if (f.studio) url.searchParams.set("studio", f.studio);
+  if (f.genre) url.searchParams.set("genre", f.genre);
+  if (f.decade != null) url.searchParams.set("decade", String(f.decade));
+  if (f.exactYear != null) url.searchParams.set("year", String(f.exactYear));
+  if (f.format) url.searchParams.set("format", f.format);
+  if (f.person) url.searchParams.set("person", f.person);
+  if (f.personRole && f.personRole !== "any") {
+    url.searchParams.set("personRole", f.personRole);
+  }
+  if (f.franchise && !opts?.omitFranchise) {
+    url.searchParams.set("franchise", f.franchise);
+  }
+  if (f.title) url.searchParams.set("title", f.title);
+  if (f.latest) url.searchParams.set("latest", "true");
+}
+
 export async function action({ request }: { request: Request }) {
   try {
     const body = await request.json();
@@ -392,123 +440,155 @@ export async function action({ request }: { request: Request }) {
       return Response.json({ error: "No message provided" }, { status: 400 });
     }
 
-    let parsed = parseCustomerQuery(message);
-    let searchQuery = message;
-    let llmFranchise: string | null = null;
-    let llmPerson: string | null = null;
-    let llmStudio: string | null = null;
-    let llmGenre: string | null = null;
-    let llmDecade: number | null = null;
-    
-    
-    
+    let structured = parseTapeAgentQueryDeterministic(message);
+
     try {
       const llmParsed = await parseQueryWithLLM(message);
-     
-      // const debugParse = {
-//         intent: llmParsed.intent || null,
-//         cleaned_query: llmParsed.cleaned_query || null,
-//         person: llmParsed.person || null,
-//         franchise: llmParsed.franchise || null,
-//         studio: llmParsed.studio || null,
-//         genre: llmParsed.genre || null,
-//         decade: llmParsed.decade || null,
-//       };
-//       
-//       console.log("PARSE DEBUG:", JSON.stringify(debugParse, null, 2));
-//       
-//       return Response.json(debugParse);
-//       
-//       console.log("RAW MESSAGE:", message);
-//       console.log("LLM PARSED:", JSON.stringify(llmParsed, null, 2));
-      
-      
-      
-    
-      parsed = {
-        intent: llmParsed.intent,
-        availability: llmParsed.availability_only,
-        preorder: llmParsed.preorder_only,
-        bestEdition: llmParsed.best_edition,
-        person: llmParsed.intent === "person",
-      };
-    
-      searchQuery = llmParsed.cleaned_query?.trim() || message;
-      llmFranchise = llmParsed.franchise?.trim() || null;
-      llmPerson = llmParsed.person?.trim() || null;
-      llmStudio = llmParsed.studio?.trim() || null;
-      llmGenre = llmParsed.genre?.trim() || null;
-      llmDecade = llmParsed.decade || null;
-    
-      if (llmFranchise) {
-        searchQuery = llmFranchise;
-      }
-    } catch (error) {
-      if (parsed.intent === "person") {
-        searchQuery = extractPersonQuery(message);
-      } else if (parsed.intent === "availability") {
-        searchQuery = extractAvailabilityQuery(message);
-      } else if (parsed.intent === "preorder") {
-        searchQuery = extractPreorderQuery(message);
-      } else if (parsed.intent === "best_edition") {
-        searchQuery = extractBestEditionQuery(message);
+      structured = mergeLlmTapeAgentParse(structured, {
+        cleaned_query: llmParsed.cleaned_query,
+        franchise: llmParsed.franchise,
+        person: llmParsed.person,
+        studio: llmParsed.studio,
+        genre: llmParsed.genre,
+        decade: llmParsed.decade,
+        year: llmParsed.year,
+        format: llmParsed.format,
+      });
+    } catch {
+      const fallback = parseCustomerQuery(message);
+      if (fallback.intent === "person") {
+        structured = {
+          ...structured,
+          residualQuery: extractPersonQuery(message),
+        };
+      } else if (fallback.intent === "availability") {
+        structured = {
+          ...structured,
+          residualQuery: extractAvailabilityQuery(message),
+        };
+      } else if (fallback.intent === "preorder") {
+        structured = {
+          ...structured,
+          residualQuery: extractPreorderQuery(message),
+        };
+      } else if (fallback.intent === "best_edition") {
+        structured = {
+          ...structured,
+          residualQuery: extractBestEditionQuery(message),
+        };
       }
     }
-    
-    searchQuery = cleanupExtractedQuery(searchQuery);
-    searchQuery = normalizeLooseFilmQuery(searchQuery);
+
+    const parsed = {
+      intent: commercialIntent(structured),
+      availability: !!structured.facets.availabilityOnly,
+      preorder: !!structured.facets.preorderOnly,
+      bestEdition: !!structured.facets.bestEdition,
+      person: structured.primaryIntent === "person",
+    };
+
+    const availabilityMode = getAvailabilityMode(
+      structured.primaryIntent,
+      structured.facets,
+    );
+
+    let searchQuery = cleanupExtractedQuery(structured.residualQuery);
+    if (!structured.facets.title) {
+      searchQuery = normalizeLooseFilmQuery(searchQuery);
+    }
     searchQuery = searchQuery.trim().toLowerCase();
-    
+
+    const browseAvailability = availabilityMode === "browse";
+
     if (!searchQuery) {
-      searchQuery = message;
+      if (!browseAvailability) {
+        searchQuery = message.trim().toLowerCase();
+      }
     }
-    
+
+    const llmFranchise = structured.facets.franchise || null;
+    const llmPerson = structured.facets.person || null;
+    const llmStudio = structured.facets.studio || null;
+    const llmGenre = structured.facets.genre || null;
+    const llmDecade = structured.facets.decade ?? null;
+    const personRole = structured.facets.personRole || "any";
+
     if (llmPerson) {
-      searchQuery = llmPerson;
+      searchQuery = llmPerson.trim().toLowerCase();
     }
-    
-    if (llmStudio && !llmPerson && !llmFranchise) {
-      searchQuery = llmStudio;
+
+    if (llmStudio && !llmPerson && !llmFranchise && !browseAvailability) {
+      searchQuery = llmStudio.trim().toLowerCase();
     }
-    
-    const franchiseQueries = expandFranchiseQuery(searchQuery, llmFranchise);
-    
+
+    let franchiseQueries: string[];
+    if (availabilityMode === "title_anchored") {
+      const t = (
+        structured.facets.title ||
+        searchQuery ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+      franchiseQueries = t ? [t] : searchQuery ? [searchQuery] : [""];
+    } else if (browseAvailability) {
+      franchiseQueries = [""];
+    } else {
+      franchiseQueries = expandFranchiseQuery(
+        searchQuery,
+        structured.facets.franchise,
+      );
+    }
+
     const expandedQueries = franchiseQueries.flatMap((q) =>
       expandCollectionHints(normalizeCollectionQuery(q)),
     );
-    
-    const uniqueExpandedQueries = Array.from(new Set(expandedQueries)).slice(0, 5);
-    
+
+    const uniqueExpandedQueries = Array.from(new Set(expandedQueries)).slice(
+      0,
+      5,
+    );
+
+    const debugAgent = process.env.TAPE_AGENT_DEBUG === "1";
+    if (debugAgent) {
+      console.log(
+        "[tape-agent] parse",
+        JSON.stringify({
+          structured,
+          availabilityMode,
+          searchQuery,
+          uniqueExpandedQueries,
+        }),
+      );
+    }
+
     let films: any[] = [];
-    
+
     for (const queryPart of uniqueExpandedQueries) {
       const url = new URL("/api/intelligence-search", request.url);
-    
-      if (parsed.intent === "preorder") {
-        url.searchParams.set("q", `latest ${queryPart}`.trim());
-      } else {
-        url.searchParams.set("q", queryPart);
+      url.searchParams.set("q", queryPart.trim());
+      applyStructuredFacetsToSearchUrl(url, structured, {
+        omitFranchise: availabilityMode === "title_anchored",
+      });
+
+      if (structured.primaryIntent === "preorder") {
+        url.searchParams.set("latest", "true");
       }
-    
-      if (llmGenre) {
-        url.searchParams.set("genre", llmGenre);
+
+      if (debugAgent) {
+        console.log("[tape-agent] intelligence-search", url.toString());
       }
-    
-      if (llmDecade) {
-        url.searchParams.set("decade", String(llmDecade));
-      }
-    
-      if (llmStudio) {
-        url.searchParams.set("studio", llmStudio);
-      }
-    
-      if (llmPerson) {
-        url.searchParams.set("person", llmPerson);
-      }
-    
+
       const response = await fetch(url.toString());
       const result = await response.json();
-    
+
+      if (debugAgent) {
+        console.log(
+          "[tape-agent] intelligence-search films",
+          result.films?.length ?? 0,
+        );
+      }
+
       if (result.films?.length) {
         films.push(...result.films);
       }
@@ -532,22 +612,31 @@ export async function action({ request }: { request: Request }) {
       });
     }
     
-    if (parsed.intent === "best_edition" && searchQuery) {
-      const wanted = searchQuery.trim().toLowerCase();
-    
-      const exactish = films.filter((filmResult: any) => {
-        const filmTitle = String(filmResult.film?.title || "").toLowerCase();
-        return filmTitle === wanted || filmTitle.includes(wanted);
-      });
-    
-      if (exactish.length > 0) {
-        films = exactish.filter((filmResult: any) => {
+    if (parsed.intent === "best_edition") {
+      const wanted = (
+        structured.facets.title ||
+        searchQuery ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+      if (wanted) {
+        const exactish = films.filter((filmResult: any) => {
           const filmTitle = String(filmResult.film?.title || "").toLowerCase();
-          return !filmTitle.includes(`${wanted} 2049`) || filmTitle === wanted;
+          return filmTitle === wanted || filmTitle.includes(wanted);
         });
+
+        if (exactish.length > 0) {
+          films = exactish.filter((filmResult: any) => {
+            const filmTitle = String(filmResult.film?.title || "").toLowerCase();
+            return (
+              !filmTitle.includes(`${wanted} 2049`) || filmTitle === wanted
+            );
+          });
+        }
       }
     }
-    
+
     if (llmGenre) {
       const wantedGenre = llmGenre.trim().toLowerCase();
     
@@ -559,25 +648,60 @@ export async function action({ request }: { request: Request }) {
         return genres.includes(wantedGenre);
       });
     }
-    
-    if (parsed.intent === "person" && llmPerson) {
-      const wantedPerson = llmPerson.trim().toLowerCase();
-    
+
+    if (
+      parsed.intent === "availability" &&
+      availabilityMode === "title_anchored" &&
+      structured.facets.title?.trim()
+    ) {
+      const wanted = structured.facets.title.trim().toLowerCase();
       films = films.filter((filmResult: any) => {
-        const topCast = String(
-          filmResult.film?.topCast ||
-          filmResult.film?.top_cast ||
-          ""
-        ).toLowerCase();
-    
-        return topCast.includes(wantedPerson);
+        const t = String(filmResult.film?.title || "").toLowerCase();
+        const tm = String(filmResult.film?.tmdb_title || "").toLowerCase();
+        return (
+          t === wanted ||
+          tm === wanted ||
+          t.includes(wanted) ||
+          tm.includes(wanted)
+        );
       });
     }
     
+    if (parsed.intent === "person" && llmPerson) {
+      const wantedPerson = llmPerson.trim().toLowerCase();
+
+      if (personRole === "director") {
+        films = films.filter((filmResult: any) => {
+          const d = String(filmResult.film?.director || "").toLowerCase();
+          return d.includes(wantedPerson);
+        });
+      } else if (personRole === "cast") {
+        films = films.filter((filmResult: any) => {
+          const topCast = String(
+            filmResult.film?.topCast ||
+              filmResult.film?.top_cast ||
+              "",
+          ).toLowerCase();
+          return topCast.includes(wantedPerson);
+        });
+      }
+    }
+    
     if (!films.length) {
+      const reply =
+        parsed.intent === "availability" && availabilityMode === "title_anchored"
+          ? `I couldn’t find a confident match for that title in our catalog.`
+          : `I couldn't find anything matching "${message}".`;
       return Response.json({
-        reply: `I couldn't find anything matching "${message}".`,
+        reply,
         intent: parsed.intent,
+        structuredParse: {
+          primaryIntent: structured.primaryIntent,
+          secondaryIntents: structured.secondaryIntents,
+          facets: structured.facets,
+          residualQuery: structured.residualQuery,
+          availabilityMode,
+        },
         options: [],
       });
     }
@@ -622,6 +746,13 @@ export async function action({ request }: { request: Request }) {
     });
     
     let filteredOptions = options;
+
+    if (debugAgent) {
+      console.log(
+        "[tape-agent] candidate offers before availability filter",
+        options.length,
+      );
+    }
     
     if (parsed.intent === "preorder") {
       const preorderOnly = options.filter((opt: any) => opt.rankingBucket === "preorder");
@@ -631,15 +762,29 @@ export async function action({ request }: { request: Request }) {
     }
     
     if (parsed.intent === "availability") {
-      const availableOnly = options.filter(
-        (opt: any) =>
+      const allowPreorder =
+        structured.facets.availabilityIncludePreorder === true;
+      const availableOnly = options.filter((opt: any) => {
+        const inStockish =
           opt.availability === "store_stock" ||
           opt.availability === "supplier_stock" ||
-          opt.rankingBucket === "preorder",
-      );
+          opt.rankingBucket === "store_in_stock" ||
+          opt.rankingBucket === "supplier_in_stock";
+        const preorderish =
+          opt.rankingBucket === "preorder" || opt.availability === "preorder";
+        if (allowPreorder) return inStockish || preorderish;
+        return inStockish;
+      });
       if (availableOnly.length > 0) {
         filteredOptions = availableOnly;
       }
+    }
+
+    if (debugAgent) {
+      console.log(
+        "[tape-agent] candidate offers after availability filter",
+        filteredOptions.length,
+      );
     }
     
     if (parsed.intent === "best_edition") {
@@ -682,7 +827,14 @@ export async function action({ request }: { request: Request }) {
       upsell: salesCopy.upsell,
       wishlistPrompt: salesCopy.wishlistPrompt,
       intent: parsed.intent,
-      searchQuery,
+        structuredParse: {
+          primaryIntent: structured.primaryIntent,
+          secondaryIntents: structured.secondaryIntents,
+          facets: structured.facets,
+          residualQuery: structured.residualQuery,
+          availabilityMode,
+        },
+        searchQuery,
       recommendedOption: recommendedOption
         ? {
             ...recommendedOption,
