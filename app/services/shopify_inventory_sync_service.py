@@ -329,6 +329,8 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
                 }
                 if ignore_compare:
                     qty_row["ignoreCompareQuantity"] = True
+                else:
+                    qty_row["changeFromQuantity"] = item["from_qty"]
                 data = gql.graphql(
                     SET_QUANTITIES_MUTATION,
                     {
