@@ -184,8 +184,8 @@ def _drift_reason(
 
 
 SET_QUANTITIES_MUTATION = """
-mutation SetQty($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) @idempotent(key: $idempotencyKey) {
-  inventorySetQuantities(input: $input) {
+mutation SetQty($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) {
+  inventorySetQuantities(input: $input) @idempotent(key: $idempotencyKey) {
     userErrors {
       field
       message
