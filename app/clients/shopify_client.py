@@ -100,6 +100,25 @@ class ShopifyClient:
         nodes = data.get("productVariants", {}).get("nodes", []) or []
         return nodes[0] if nodes else None
 
+    def product_id_by_handle(self, handle: str) -> Optional[str]:
+        """
+        Return Shopify Product GID if a published product exists with this handle, else None.
+
+        Used for handle collision avoidance before productSet create.
+        """
+        query = """
+        query ($handle: String!) {
+          productByHandle(handle: $handle) {
+            id
+          }
+        }
+        """
+        data = self.graphql(query, {"handle": handle})
+        node = data.get("productByHandle")
+        if not node:
+            return None
+        return node.get("id")
+
 
 def get_shopify_client(env_file: str = ".env", api_version: str = "2026-04") -> ShopifyClient:
     """Factory that loads env and returns a configured ShopifyClient."""

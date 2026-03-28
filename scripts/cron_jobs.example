@@ -14,18 +14,21 @@ SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 
 # tape-film-ichoose-cron BEGIN
-# Shared lock: /opt/tape-film-ichoose/.locks/pipeline.lock — stock and catalog cannot overlap.
+# Shared lock: /opt/tape-film-ichoose/.locks/pipeline.lock
+# Stock and catalog do not overlap.
 
 # --- Stock sync (3x daily: 06:00, 14:00, 22:00 Sydney) ---
-0 19 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
-0 3 * * *  /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
-0 11 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_stock.log 2>&1
+0 19 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_stock.log
+0 3 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_stock.log
+0 11 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_stock.log
 
 # --- Catalog sync (daily 09:00 Sydney) ---
-0 22 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_catalog_with_notify.sh >> /opt/tape-film-ichoose/logs/cron_catalog.log 2>&1
+0 22 * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/pipeline.lock /bin/bash /opt/tape-film-ichoose/scripts/run_catalog_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_catalog.log
 
-# --- Shopify sync (Sydney) ---
-*/15 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/shopify_store_sync.lock /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_store_sync.sh >> /opt/tape-film-ichoose/logs/cron_shopify_store_sync.log 2>&1
-*/30 * * * * /usr/bin/flock -n /opt/tape-film-ichoose/.locks/shopify_inventory_sync.lock /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_inventory_sync.sh >> /opt/tape-film-ichoose/logs/cron_shopify_inventory_sync.log 2>&1
+# --- Shopify store sync (daily 09:20 Sydney) ---
+20 22 * * * /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_store_sync.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_shopify_store_sync.log
+
+# --- Shopify inventory sync (daily 09:35 Sydney) ---
+35 22 * * * /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_inventory_sync.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_shopify_inventory_sync.log
 
 # tape-film-ichoose-cron END
