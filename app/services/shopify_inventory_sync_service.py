@@ -14,6 +14,7 @@ true mismatch, or unclassified) for business interpretation — mutations stay o
 from __future__ import annotations
 
 import os
+import uuid
 from collections import Counter
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -183,7 +184,7 @@ def _drift_reason(
 
 
 SET_QUANTITIES_MUTATION = """
-mutation SetQty($input: InventorySetQuantitiesInput!) {
+mutation SetQty($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) @idempotent(key: $idempotencyKey) {
   inventorySetQuantities(input: $input) {
     userErrors {
       field
@@ -192,6 +193,27 @@ mutation SetQty($input: InventorySetQuantitiesInput!) {
   }
 }
 """
+
+
+def _inventory_set_quantities_idempotency_key(
+    item: Dict[str, Any],
+    location_id: str,
+    ignore_compare: bool,
+) -> str:
+    """Deterministic UUID v5 so retries dedupe; new from/to → new key."""
+    name = "|".join(
+        (
+            "tape-film/shopify_inventory_sync",
+            str(item.get("listing_id", "")),
+            str(item.get("shopify_inventory_item_id", "")),
+            str(item.get("shopify_variant_id", "")),
+            location_id,
+            str(item.get("from_qty", "")),
+            str(item.get("to_qty", "")),
+            "1" if ignore_compare else "0",
+        )
+    )
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
 
 
 def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False) -> Dict[str, Any]:
@@ -331,6 +353,9 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
                     qty_row["ignoreCompareQuantity"] = True
                 else:
                     qty_row["changeFromQuantity"] = item["from_qty"]
+                idem_key = _inventory_set_quantities_idempotency_key(
+                    item, location_id, ignore_compare
+                )
                 data = gql.graphql(
                     SET_QUANTITIES_MUTATION,
                     {
@@ -339,7 +364,8 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
                             "reason": "correction",
                             "referenceDocumentUri": "tape-film://jobs/shopify_inventory_sync",
                             "quantities": [qty_row],
-                        }
+                        },
+                        "idempotencyKey": idem_key,
                     },
                 )
                 block = (data or {}).get("inventorySetQuantities") or {}
