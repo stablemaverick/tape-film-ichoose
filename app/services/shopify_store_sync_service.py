@@ -209,7 +209,7 @@ def _normalize_title_match_key(s: str) -> str:
 
 
 def _title_row_strong_match(row: Dict[str, Any], key_norm: str) -> bool:
-    for f in ("title", "harmonized_title", "edition_title"):
+    for f in ("title", "edition_title"):
         v = clean_text(row.get(f))
         if v and _normalize_title_match_key(v) == key_norm:
             return True
@@ -233,10 +233,10 @@ def _fetch_catalog_rows_for_display_title(
     pat = _ilike_exact_pattern(display_title)
     merged: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for col in ("title", "harmonized_title", "edition_title"):
+    for col in ("title", "edition_title"):
         resp = (
             supabase.table("catalog_items")
-            .select("id,title,harmonized_title,edition_title")
+            .select("id,title,edition_title")
             .eq("active", True)
             .ilike(col, pat)
             .execute()
