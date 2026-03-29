@@ -33,6 +33,7 @@ database.sqlite
 
 # Python
 venv/
+.tmdb_harness_venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -56,6 +57,11 @@ supplier_files/
 
 # Local tooling
 google-cloud-sdk/
+
+# TMDB live harness output (may contain large payloads; never commit API keys in URLs)
+tests/tmdb_harness/output/
+tests/tmdb_harness/workstream_output/
+tests/tmdb_harness/film_bundle_harness_output/
 
 # Editors / misc
 .cursor/
