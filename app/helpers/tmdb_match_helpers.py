@@ -1,4 +1,6 @@
 import re
+from typing import List
+
 import requests
 
 
@@ -15,6 +17,153 @@ def build_search_query_variants(title):
         variants.append(no_articles)
 
     return variants
+
+
+# TV SKU suffixes (normalized lowercase titles) — strip longest / most specific first.
+_TV_PACKAGING_STRIP_END = (
+    re.compile(r"\s+\bfinal\s+season\s+part\s+\d+\s*$", re.IGNORECASE),
+    re.compile(r"\s+\bseason\s+\d+\s+part\s+\d+\s*$", re.IGNORECASE),
+    re.compile(
+        r"\s+\bthe\s+complete\s+[a-z][a-z\s\'-]{0,48}\s+collection\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\s+\bthe\s+complete\s+(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+season\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\s+\blimited\s+event\s+series\s*$", re.IGNORECASE),
+    re.compile(r"\s+\blimited\s+series\s*$", re.IGNORECASE),
+    re.compile(r"\s+\bcomplete\s+series\s*$", re.IGNORECASE),
+    re.compile(r"\s+\bcomplete\s+season\s*$", re.IGNORECASE),
+    re.compile(
+        r"\s+\bseason\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\s+\bseries\s+\d+\s*$", re.IGNORECASE),
+    re.compile(r"\s+\bseason\s+\d+\s*$", re.IGNORECASE),
+    re.compile(r"\s+\bpart\s+\d+\s*$", re.IGNORECASE),
+)
+
+
+def _strip_one_tv_packaging_layer(normalized: str) -> str:
+    """Remove one trailing TV packaging phrase from a normalized title."""
+    t = re.sub(r"\s+", " ", (normalized or "").strip())
+    if not t:
+        return ""
+    for pat in _TV_PACKAGING_STRIP_END:
+        t2 = pat.sub("", t)
+        if t2 != t:
+            return re.sub(r"\s+", " ", t2).strip()
+    return t
+
+
+def _tv_strip_chain_from_normalized(normalized: str) -> List[str]:
+    """Iteratively strip TV packaging; returns unique non-empty strings in order tried."""
+    chain: List[str] = []
+    seen: set[str] = set()
+    cur = re.sub(r"\s+", " ", (normalized or "").strip())
+    while cur and cur not in seen:
+        seen.add(cur)
+        chain.append(cur)
+        nxt = _strip_one_tv_packaging_layer(cur)
+        if not nxt or nxt == cur:
+            break
+        cur = nxt
+    return chain
+
+
+def build_tv_search_query_variants(title: str) -> List[str]:
+    """
+    TV-only search query variants for TMDB ``/search/tv``.
+
+    Starts from ``build_search_query_variants``, then adds de-packaged variants
+    (season/series/part/complete-series tails) and optional ``<title> <year>`` when
+    the supplier title carries a parenthetical edition year (e.g. Battlestar 2004).
+    Does not change film / movie search paths.
+    """
+    base_variants = build_search_query_variants(title)
+    if not base_variants:
+        return []
+
+    year_hint = extract_year(title)
+    out: List[str] = []
+    seen: set[str] = set()
+
+    def add(q: str) -> None:
+        q = re.sub(r"\s+", " ", (q or "").strip()).lower()
+        if len(q) < 2:
+            return
+        if q not in seen:
+            seen.add(q)
+            out.append(q)
+
+    for v in base_variants:
+        for link in _tv_strip_chain_from_normalized(v):
+            add(link)
+            if year_hint and str(year_hint) not in link.split():
+                add(f"{link} {year_hint}")
+
+    return out
+
+
+def _is_tv_single_series_home_video_collection(title: str) -> bool:
+    """
+    True when ``collection`` refers to a single episodic show box set, not a multi-film bundle.
+
+    Used to avoid blocking obvious one-show TV SKUs on the substring ``collection`` alone.
+    """
+    t = str(title or "").lower()
+    if "collection" not in t:
+        return False
+
+    # Hard multi-film / franchise bundle cues — keep strict blocking.
+    if "movie collection" in t or "film collection" in t:
+        return False
+    if re.search(r"\b\d+\s*[-–]\s*(?:film|movie)s?\b", t):
+        return False
+    if re.search(r"\b(?:five|four|three|two|six|seven|eight|nine|ten)\s*[-\s]+movie\b", t):
+        return False
+    if " phase " in t or "films" in t or "film favorites" in t:
+        return False
+    if t.count("/") >= 2:
+        return False
+
+    if re.search(r"\bcomplete\s+series\b", t) and "movie" not in t and "film" not in t:
+        return True
+
+    # "The Complete … Collection" actor / era sets (e.g. David Tennant Doctor Who run).
+    m = re.search(
+        r"\bthe\s+complete\s+([a-z][a-z\s\'-]{0,40})\s+collection\b",
+        t,
+        re.IGNORECASE,
+    )
+    if m:
+        if re.search(r"\b(movie|films?|phase)\b", t):
+            return False
+        span = m.group(1).lower()
+        # Multi-film franchise sets often use "The Complete <Franchise> Collection".
+        _FRANCHISE_COMPLETE_COLLECTION = (
+            "james bond",
+            "indiana jones",
+            "mission impossible",
+            "fast and furious",
+            "fast & furious",
+            "jurassic",
+            "transformers",
+            "marvel",
+            "middle earth",
+            "middle-earth",
+            "pirates of the caribbean",
+            "harry potter",
+            "star wars",
+            "x-men",
+            "james bond collection",
+        )
+        if any(fr in span for fr in _FRANCHISE_COMPLETE_COLLECTION):
+            return False
+        return True
+
+    return False
 
 
 def normalize_match_title(value):
@@ -170,6 +319,20 @@ def is_safe_tmdb_match(source_title, candidate_title):
 def detect_tmdb_search_type(title):
     t = str(title or "").lower()
 
+    # Single-show TV home video (share logic with collection false-positive reduction).
+    if _is_tv_single_series_home_video_collection(title):
+        return "tv"
+
+    if re.search(r"\b(?:limited\s+event\s+series|event\s+series)\b", t):
+        return "tv"
+    if "complete season" in t or "complete series" in t:
+        return "tv"
+    if re.search(
+        r"\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+season\b",
+        t,
+    ):
+        return "tv"
+
     if (
         "season " in t
         or "seasons " in t
@@ -184,6 +347,9 @@ def detect_tmdb_search_type(title):
 
 def is_collection_or_bundle(title):
     t = str(title or "").lower()
+
+    if _is_tv_single_series_home_video_collection(title):
+        return False
 
     return (
         "/" in t
@@ -244,12 +410,25 @@ def pick_best_tmdb_match(source_title, source_year, results, search_type):
 
 
 def search_tmdb_movie_safe(title, tmdb_api_key, tmdb_api_url, source_year=None):
+    """
+    Search TMDB movie or TV with safe collection rejection and shared TV improvements.
+
+    ``title`` should be the **supplier-facing catalog string** (e.g. ``clean_text`` output),
+    not a pre-normalized slug. Routing (``detect_tmdb_search_type``), collection checks,
+    and TV query variants all run on this string so they stay aligned with callers that
+    derive ``search_type`` from the same raw title.
+    """
     if is_collection_or_bundle(title):
         return None
 
     search_type = detect_tmdb_search_type(title)
     endpoint = "tv" if search_type == "tv" else "movie"
-    for query in build_search_query_variants(title):
+    query_variants = (
+        build_tv_search_query_variants(title)
+        if search_type == "tv"
+        else build_search_query_variants(title)
+    )
+    for query in query_variants:
         params = {
             "api_key": tmdb_api_key,
             "query": query,

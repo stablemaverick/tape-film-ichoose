@@ -296,7 +296,9 @@ def run_enrich(
         cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
         tmdb_match = query_cache.get(cache_key)
         if cache_key not in query_cache:
-            tmdb_match = search_tmdb_movie_safe(cleaned, tmdb_api_key, tmdb_api_url, source_year=source_year)
+            tmdb_match = search_tmdb_movie_safe(
+                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
+            )
             query_cache[cache_key] = tmdb_match
 
         if tmdb_match:
@@ -349,7 +351,9 @@ def run_enrich(
         cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
         tmdb_match = query_cache.get(cache_key)
         if cache_key not in query_cache:
-            tmdb_match = search_tmdb_movie_safe(cleaned, tmdb_api_key, tmdb_api_url, source_year=source_year)
+            tmdb_match = search_tmdb_movie_safe(
+                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
+            )
             query_cache[cache_key] = tmdb_match
 
         if tmdb_match:
