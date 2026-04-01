@@ -182,6 +182,38 @@ def _parse_shopify_metafield_date(raw_value: Any) -> Tuple[Optional[str], Option
     return parsed, text
 
 
+def _listing_should_be_preorder(media_release_date: Optional[str]) -> bool:
+    if not media_release_date:
+        return False
+    try:
+        d = date.fromisoformat(str(media_release_date)[:10])
+        return d > datetime.now(timezone.utc).date()
+    except Exception:
+        return False
+
+
+def derive_catalog_availability_from_listing(
+    inventory_quantity: Any,
+    inventory_policy: Optional[str],
+    media_release_date: Optional[str],
+) -> Tuple[str, int]:
+    """
+    Canonical Shopify-linked catalog availability snapshot from listing state.
+
+    Returns:
+      (availability_status, supplier_stock_status)
+    """
+    try:
+        qty = int(inventory_quantity or 0)
+    except Exception:
+        qty = 0
+    if _listing_should_be_preorder(media_release_date):
+        return "preorder", qty
+    if qty > 0:
+        return "store_stock", qty
+    return "store_out", qty
+
+
 def _listing_ignored_for_matching(row: Dict[str, Any]) -> bool:
     pt = (clean_text(row.get("product_type")) or "").lower()
     return pt in ("gift card", "gift cards", "gift_card")
@@ -557,6 +589,37 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                     batch,
                     on_conflict="shop,shopify_variant_id",
                 ).execute()
+
+            # Keep existing Shopify-linked catalog_items commercially in sync with live Shopify sellability.
+            # Only touch rows linked by exact shopify_variant_id match (not barcode/title fallbacks).
+            catalog_updates: Dict[str, Dict[str, Any]] = {}
+            for r in rows:
+                cid = clean_text(r.get("catalog_item_id"))
+                if not cid:
+                    continue
+                if (r.get("match_status") or "") != "matched":
+                    continue
+                if (r.get("match_method") or "") != "shopify_variant_id":
+                    continue
+                av, stock_qty = derive_catalog_availability_from_listing(
+                    r.get("inventory_quantity"),
+                    clean_text(r.get("inventory_policy")),
+                    clean_text(r.get("media_release_date")),
+                )
+                catalog_updates[cid] = {
+                    "availability_status": av,
+                    "supplier_stock_status": stock_qty,
+                    "shopify_variant_id": clean_text(r.get("shopify_variant_id")),
+                    "shopify_product_id": clean_text(r.get("shopify_product_id")),
+                    "media_release_date": clean_text(r.get("media_release_date")),
+                }
+
+            if catalog_updates:
+                for batch_ids in _chunked(list(catalog_updates.keys()), 200):
+                    for cid in batch_ids:
+                        supabase.table("catalog_items").update(catalog_updates[cid]).eq(
+                            "id", cid
+                        ).execute()
 
         return {
             "status": "ok",
