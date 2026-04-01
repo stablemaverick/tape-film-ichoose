@@ -268,3 +268,100 @@ def test_resolve_catalog_matches_core_title_keeps_ambiguous_for_equal_supplier_s
     assert method == "barcode"
     assert status == "ambiguous"
     assert "barcode:ALPHA-2:n=2" in val
+
+
+def test_resolve_catalog_matches_core_title_supplier_stock_prefers_unique_highest_qty():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c-high",
+                "barcode": "5021866055510",
+                "title": "Example Title",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "supplier_stock_status": 53,
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c-low",
+                "barcode": "5021866055510",
+                "title": "Example Title",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "supplier_stock_status": 3,
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c-out",
+                "barcode": "5021866055510",
+                "title": "Example Title",
+                "edition_title": None,
+                "availability_status": "store_out",
+                "supplier_stock_status": 0,
+                "shopify_variant_id": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/7",
+            "barcode": "5021866055510",
+            "_match_display_title": "Example Title 4K Ultra HD",
+            "product_type": "Movie",
+        }
+    ]
+    cid, method, status, _ = _resolve_catalog_matches(sb, flat_variants)[
+        "gid://shopify/ProductVariant/7"
+    ]
+    assert cid == "c-high"
+    assert method == "barcode_title"
+    assert status == "matched"
+
+
+def test_resolve_catalog_matches_core_title_supplier_stock_equal_qty_stays_ambiguous():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c1",
+                "barcode": "EQ-SUPP",
+                "title": "Equal Stock",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "supplier_stock_status": 8,
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c2",
+                "barcode": "EQ-SUPP",
+                "title": "Equal Stock",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "supplier_stock_status": 8,
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c3",
+                "barcode": "EQ-SUPP",
+                "title": "Equal Stock",
+                "edition_title": None,
+                "availability_status": "store_out",
+                "supplier_stock_status": 0,
+                "shopify_variant_id": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/8",
+            "barcode": "EQ-SUPP",
+            "_match_display_title": "Equal Stock Blu-Ray",
+            "product_type": "Movie",
+        }
+    ]
+    cid, method, status, val = _resolve_catalog_matches(sb, flat_variants)[
+        "gid://shopify/ProductVariant/8"
+    ]
+    assert cid is None
+    assert method == "barcode"
+    assert status == "ambiguous"
+    assert "barcode:EQ-SUPP:n=3" in val

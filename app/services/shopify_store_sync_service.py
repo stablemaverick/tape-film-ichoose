@@ -313,6 +313,22 @@ def _pick_single_preferred_row(rows: List[Dict[str, Any]]) -> Optional[Dict[str,
     if len(with_shopify) == 1:
         return with_shopify[0]
 
+    # Final deterministic tie-break:
+    # if all tied rows are supplier_stock and stock quantities differ,
+    # pick the unique highest supplier_stock_status.
+    if top and all((clean_text(r.get("availability_status")) or "").lower() == "supplier_stock" for r in top):
+        parsed: List[tuple[int, Dict[str, Any]]] = []
+        for r in top:
+            try:
+                qty = int(r.get("supplier_stock_status") or 0)
+            except Exception:
+                qty = 0
+            parsed.append((qty, r))
+        max_qty = max(q for q, _ in parsed)
+        winners = [r for q, r in parsed if q == max_qty]
+        if len(winners) == 1:
+            return winners[0]
+
     return None
 
 
