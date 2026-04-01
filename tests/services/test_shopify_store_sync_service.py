@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.services.shopify_store_sync_service import (
     _resolve_catalog_matches,
     derive_catalog_availability_from_listing,
+    should_writeback_catalog_row_from_listing,
 )
 
 
@@ -29,6 +30,22 @@ def test_store_sync_writeback_marks_zero_qty_non_future_store_out():
     av, qty = derive_catalog_availability_from_listing(0, "DENY", None)
     assert av == "store_out"
     assert qty == 0
+
+
+def test_store_sync_writeback_gate_allows_matched_catalog_item_even_without_catalog_variant_link():
+    row = {
+        "catalog_item_id": "7fc20093-f084-43e0-94a5-299493bb9ddc",
+        "match_status": "matched",
+        "match_method": "barcode_title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/43005128802367",
+    }
+    assert should_writeback_catalog_row_from_listing(row) is True
+
+    row2 = {
+        "catalog_item_id": "7fc20093-f084-43e0-94a5-299493bb9ddc",
+        "match_status": "ambiguous",
+    }
+    assert should_writeback_catalog_row_from_listing(row2) is False
 
 
 @dataclass

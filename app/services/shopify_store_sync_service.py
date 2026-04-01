@@ -214,6 +214,19 @@ def derive_catalog_availability_from_listing(
     return "store_out", qty
 
 
+def should_writeback_catalog_row_from_listing(row: Dict[str, Any]) -> bool:
+    """
+    Write back catalog commercial snapshot for any confidently matched listing row.
+
+    We intentionally key on listing match status + catalog_item_id, not on current
+    catalog_items.shopify_variant_id presence, so stale/null variant links are repaired.
+    """
+    cid = clean_text(row.get("catalog_item_id"))
+    if not cid:
+        return False
+    return (clean_text(row.get("match_status")) or "") == "matched"
+
+
 def _listing_ignored_for_matching(row: Dict[str, Any]) -> bool:
     pt = (clean_text(row.get("product_type")) or "").lower()
     return pt in ("gift card", "gift cards", "gift_card")
@@ -700,16 +713,14 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                     on_conflict="shop,shopify_variant_id",
                 ).execute()
 
-            # Keep existing Shopify-linked catalog_items commercially in sync with live Shopify sellability.
-            # Only touch rows linked by exact shopify_variant_id match (not barcode/title fallbacks).
+            # Keep matched catalog_items commercially in sync with live Shopify sellability.
+            # Match confidence comes from shopify_listings.match_status + catalog_item_id.
             catalog_updates: Dict[str, Dict[str, Any]] = {}
             for r in rows:
+                if not should_writeback_catalog_row_from_listing(r):
+                    continue
                 cid = clean_text(r.get("catalog_item_id"))
                 if not cid:
-                    continue
-                if (r.get("match_status") or "") != "matched":
-                    continue
-                if (r.get("match_method") or "") != "shopify_variant_id":
                     continue
                 av, stock_qty = derive_catalog_availability_from_listing(
                     r.get("inventory_quantity"),
