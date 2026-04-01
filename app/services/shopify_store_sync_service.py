@@ -277,6 +277,45 @@ def _core_title_match_key(s: Optional[str]) -> str:
     return t
 
 
+def _availability_preference_rank(value: Optional[str]) -> int:
+    v = (clean_text(value) or "").lower()
+    if v == "store_stock":
+        return 1
+    if v == "preorder":
+        return 2
+    if v == "supplier_stock":
+        return 3
+    if v == "store_out":
+        return 4
+    return 9
+
+
+def _pick_single_preferred_row(rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    Deterministic tie-break for identical core-title candidates.
+
+    Preference:
+      1) availability_status: store_stock > preorder > supplier_stock > store_out
+      2) non-null shopify_variant_id
+      3) otherwise no single winner (return None)
+    """
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+
+    best_rank = min(_availability_preference_rank(r.get("availability_status")) for r in rows)
+    top = [r for r in rows if _availability_preference_rank(r.get("availability_status")) == best_rank]
+    if len(top) == 1:
+        return top[0]
+
+    with_shopify = [r for r in top if clean_text(r.get("shopify_variant_id"))]
+    if len(with_shopify) == 1:
+        return with_shopify[0]
+
+    return None
+
+
 def _title_row_strong_match(row: Dict[str, Any], key_norm: str) -> bool:
     for f in ("title", "edition_title"):
         v = clean_text(row.get(f))
@@ -428,7 +467,7 @@ def _resolve_catalog_matches(
     for batch in _chunked(barcodes, 200):
         resp = (
             supabase.table("catalog_items")
-            .select("id,barcode,title,edition_title,source_type,shopify_variant_id")
+            .select("id,barcode,title,edition_title,source_type,shopify_variant_id,availability_status")
             .eq("active", True)
             .in_("barcode", batch)
             .execute()
@@ -460,8 +499,9 @@ def _resolve_catalog_matches(
                     or _core_title_match_key(clean_text(r.get("edition_title")))
                     == core_norm
                 ]
-            if len(strong) == 1:
-                cid = str(strong[0]["id"])
+            preferred = _pick_single_preferred_row(strong)
+            if preferred is not None:
+                cid = str(preferred["id"])
                 result[vid] = (cid, "barcode_title", "matched", cid)
             else:
                 result[vid] = (None, "barcode", "ambiguous", f"barcode:{bc}:n={len(rows)}")

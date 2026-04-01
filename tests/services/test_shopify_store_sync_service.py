@@ -61,7 +61,7 @@ class _Chain:
     def execute(self):
         if self._select == "id,shopify_variant_id":
             return _ExecResult([])
-        if self._select == "id,barcode,title,edition_title,source_type,shopify_variant_id":
+        if self._select == "id,barcode,title,edition_title,source_type,shopify_variant_id,availability_status":
             out = []
             for r in self.client.catalog_rows:
                 if self._in_field == "barcode" and self._in_vals is not None:
@@ -156,3 +156,115 @@ def test_resolve_catalog_matches_barcode_title_matches_core_title_after_suffix_s
     assert cid == "c1"
     assert method == "barcode_title"
     assert status == "matched"
+
+
+def test_resolve_catalog_matches_core_title_prefers_supplier_stock_over_store_out():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c-supp",
+                "barcode": "ALPHA-1",
+                "title": "Alpha",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c-out",
+                "barcode": "ALPHA-1",
+                "title": "Alpha",
+                "edition_title": None,
+                "availability_status": "store_out",
+                "shopify_variant_id": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/4",
+            "barcode": "ALPHA-1",
+            "_match_display_title": "Alpha 4K Ultra HD + Blu-Ray",
+            "product_type": "Movie",
+        }
+    ]
+    cid, method, status, _ = _resolve_catalog_matches(sb, flat_variants)[
+        "gid://shopify/ProductVariant/4"
+    ]
+    assert cid == "c-supp"
+    assert method == "barcode_title"
+    assert status == "matched"
+
+
+def test_resolve_catalog_matches_core_title_prefers_store_stock_when_present():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c-store",
+                "barcode": "FISTFUL-1",
+                "title": "A Fistful Of Dollars",
+                "edition_title": None,
+                "availability_status": "store_stock",
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c-supp",
+                "barcode": "FISTFUL-1",
+                "title": "A Fistful Of Dollars",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "shopify_variant_id": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/5",
+            "barcode": "FISTFUL-1",
+            "_match_display_title": "A Fistful Of Dollars (1964) Limited Edition Steelbook",
+            "product_type": "Movie",
+        }
+    ]
+    cid, method, status, _ = _resolve_catalog_matches(sb, flat_variants)[
+        "gid://shopify/ProductVariant/5"
+    ]
+    assert cid == "c-store"
+    assert method == "barcode_title"
+    assert status == "matched"
+
+
+def test_resolve_catalog_matches_core_title_keeps_ambiguous_for_equal_supplier_stock_rows():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c1",
+                "barcode": "ALPHA-2",
+                "title": "Alpha",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "shopify_variant_id": None,
+            },
+            {
+                "id": "c2",
+                "barcode": "ALPHA-2",
+                "title": "Alpha",
+                "edition_title": None,
+                "availability_status": "supplier_stock",
+                "shopify_variant_id": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/6",
+            "barcode": "ALPHA-2",
+            "_match_display_title": "Alpha 4K Ultra HD",
+            "product_type": "Movie",
+        }
+    ]
+    cid, method, status, val = _resolve_catalog_matches(sb, flat_variants)[
+        "gid://shopify/ProductVariant/6"
+    ]
+    assert cid is None
+    assert method == "barcode"
+    assert status == "ambiguous"
+    assert "barcode:ALPHA-2:n=2" in val
