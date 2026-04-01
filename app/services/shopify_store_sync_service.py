@@ -391,7 +391,7 @@ def _resolve_catalog_matches(
     for batch in _chunked(barcodes, 200):
         resp = (
             supabase.table("catalog_items")
-            .select("id,barcode")
+            .select("id,barcode,title,edition_title,source_type,shopify_variant_id")
             .eq("active", True)
             .in_("barcode", batch)
             .execute()
@@ -410,7 +410,14 @@ def _resolve_catalog_matches(
             cid = str(rows[0]["id"])
             result[vid] = (cid, "barcode", "matched", cid)
         elif len(rows) > 1:
-            result[vid] = (None, "barcode", "ambiguous", f"barcode:{bc}:n={len(rows)}")
+            display = clean_text(by_vid_row[vid].get("_match_display_title"))
+            key_norm = _normalize_title_match_key(display or "")
+            strong = [r for r in rows if key_norm and _title_row_strong_match(r, key_norm)]
+            if len(strong) == 1:
+                cid = str(strong[0]["id"])
+                result[vid] = (cid, "barcode_title", "matched", cid)
+            else:
+                result[vid] = (None, "barcode", "ambiguous", f"barcode:{bc}:n={len(rows)}")
 
     pending = [v for v in by_vid_row if v not in result]
     for vid in pending:
