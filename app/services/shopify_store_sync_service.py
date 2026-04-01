@@ -240,6 +240,43 @@ def _normalize_title_match_key(s: str) -> str:
     return t
 
 
+def _core_title_match_key(s: Optional[str]) -> str:
+    """
+    Normalize a title to its core identity for conservative barcode tie-break matching.
+
+    Strips common format/packaging suffixes and year parentheticals, then normalizes whitespace/punctuation.
+    """
+    t = (clean_text(s) or "").lower()
+    if not t:
+        return ""
+
+    t = t.replace("—", " ").replace("–", " ")
+
+    # Remove year parentheticals like "(1959)" anywhere in the listing/catalog title.
+    t = re.sub(r"\(\s*(19|20)\d{2}\s*\)", " ", t)
+
+    # Remove common format / packaging tokens.
+    token_patterns = [
+        r"\b4k\s+ultra\s+hd\b",
+        r"\bultra\s+hd\b",
+        r"\buhd\b",
+        r"\bblu[\s-]?ray\b",
+        r"\bdvd\b",
+        r"\bsteelbook\b",
+        r"\blimited\s+edition\b",
+    ]
+    for p in token_patterns:
+        t = re.sub(p, " ", t, flags=re.IGNORECASE)
+
+    # Remove common combo marker like "+ Blu-Ray".
+    t = re.sub(r"\+\s*blu[\s-]?ray\b", " ", t, flags=re.IGNORECASE)
+
+    # Remove leftover punctuation and normalize spacing.
+    t = re.sub(r"[^a-z0-9\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
 def _title_row_strong_match(row: Dict[str, Any], key_norm: str) -> bool:
     for f in ("title", "edition_title"):
         v = clean_text(row.get(f))
@@ -412,7 +449,17 @@ def _resolve_catalog_matches(
         elif len(rows) > 1:
             display = clean_text(by_vid_row[vid].get("_match_display_title"))
             key_norm = _normalize_title_match_key(display or "")
+            core_norm = _core_title_match_key(display)
             strong = [r for r in rows if key_norm and _title_row_strong_match(r, key_norm)]
+            if not strong and core_norm:
+                strong = [
+                    r
+                    for r in rows
+                    if _core_title_match_key(clean_text(r.get("title")))
+                    == core_norm
+                    or _core_title_match_key(clean_text(r.get("edition_title")))
+                    == core_norm
+                ]
             if len(strong) == 1:
                 cid = str(strong[0]["id"])
                 result[vid] = (cid, "barcode_title", "matched", cid)

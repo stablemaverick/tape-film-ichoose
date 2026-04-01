@@ -124,3 +124,35 @@ def test_resolve_catalog_matches_barcode_title_keeps_ambiguous_when_multiple_str
     assert method == "barcode"
     assert status == "ambiguous"
     assert "barcode:111:n=2" in val
+
+
+def test_resolve_catalog_matches_barcode_title_matches_core_title_after_suffix_strip():
+    sb = _FakeSupabase(
+        catalog_rows=[
+            {
+                "id": "c1",
+                "barcode": "5027035029634",
+                "title": "Ben Hur",
+                "edition_title": None,
+            },
+            {
+                "id": "c2",
+                "barcode": "5027035029634",
+                "title": "Some Other Title",
+                "edition_title": None,
+            },
+        ]
+    )
+    flat_variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/3",
+            "barcode": "5027035029634",
+            "_match_display_title": "Ben Hur (1959) Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+            "product_type": "Movie",
+        }
+    ]
+    matches = _resolve_catalog_matches(sb, flat_variants)
+    cid, method, status, _ = matches["gid://shopify/ProductVariant/3"]
+    assert cid == "c1"
+    assert method == "barcode_title"
+    assert status == "matched"
