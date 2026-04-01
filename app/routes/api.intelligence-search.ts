@@ -14,10 +14,15 @@ import {
 import {
   getOfferRankingBucket,
   isFutureRelease,
+  releaseDateValue,
   rankOffer,
   rankOfferWithPreferences,
   sortFilmsWithOffersFinal,
 } from "../lib/film-offer-ranking.server";
+import {
+  buildOfferRareTokenDf,
+  mediaRetrievalRankAdjustment,
+} from "../lib/media-offer-ranking-tweaks.server";
 
 type FilmRow = {
   id: string;
@@ -50,8 +55,30 @@ type OfferRow = {
   film_id?: string | null;
 };
 
+const RECENT_RELEASE_WINDOW_DAYS = 28;
+
 function normalize(text: string | null | undefined) {
   return (text || "").trim().toLowerCase();
+}
+
+function studioAliasTerms(studio: string | null): string[] {
+  const s = normalize(studio);
+  if (!s) return [];
+  if (s !== "disney") return [s];
+  return [
+    "disney",
+    "walt disney",
+    "walt disney pictures",
+    "buena vista",
+    "touchstone",
+    "pixar",
+    "marvel",
+    "lucasfilm",
+    "20th century studios",
+    "20th century fox",
+    "fox",
+    "searchlight",
+  ];
 }
 
 
@@ -109,14 +136,103 @@ function scoreFilmMatch(film: FilmRow, query: string) {
   return score;
 }
 
-function dedupeOffersByBarcode(offers: OfferRow[]) {
+type FilmRowScored = FilmRow & { _score: number };
+
+/**
+ * When the query is a short multi-word title and at least one film matches that title
+ * exactly (primary or TMDB), drop other films whose **primary title** is a loose
+ * superstring (e.g. "The Killer Inside Me" for query "the killer").
+ *
+ * Keeps: exact match; titles that only extend with a parenthetical (year/subtitle);
+ * films that matched without sharing the query as a title prefix (director/cast hits).
+ */
+function filterLooseSuperstringFilmsWhenExactTitleExists(
+  films: FilmRowScored[],
+  query: string,
+): FilmRowScored[] {
+  const q = normalize(query);
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 6) {
+    return films;
+  }
+
+  const hasExact = films.some(
+    (f) =>
+      normalize(f.title) === q || normalize(f.tmdb_title || "") === q,
+  );
+  if (!hasExact) {
+    return films;
+  }
+
+  return films.filter((f) => {
+    const primary = normalize(f.title);
+    if (primary === q || normalize(f.tmdb_title || "") === q) {
+      return true;
+    }
+    if (!primary.startsWith(q)) {
+      return true;
+    }
+    const rest = primary.slice(q.length).trimStart();
+    if (!rest) {
+      return true;
+    }
+    if (/^\(\d{4}\)/.test(rest)) {
+      return true;
+    }
+    if (/^\([^)]+\)\s*$/.test(rest)) {
+      return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Materially distinct commercial offers: separate Shopify variants/products are always
+ * separate rows. Non-Shopify rows dedupe on barcode (or catalog id if no barcode).
+ */
+function offerIdentityKey(offer: OfferRow): string {
+  const vid = (offer.shopify_variant_id || "").trim();
+  if (vid) return `shopify_variant:${vid}`;
+  const pid = (offer.shopify_product_id || "").trim();
+  if (pid) return `shopify_product:${pid}`;
+  const bc = (offer.barcode || "").trim();
+  if (bc) return `barcode:${bc}`;
+  return `catalog_id:${offer.id}`;
+}
+
+function offerIsShopifyLinked(offer: OfferRow): boolean {
+  return !!(
+    (offer.shopify_variant_id || "").trim() ||
+    (offer.shopify_product_id || "").trim()
+  );
+}
+
+/** Drop supplier rows whose barcode matches any Shopify-linked row (same film). */
+function filterSupplierOffersRedundantWithShopify(
+  shopifyOffers: OfferRow[],
+  supplierOffers: OfferRow[],
+): OfferRow[] {
+  const barcodes = new Set<string>();
+  for (const o of shopifyOffers) {
+    const b = (o.barcode || "").trim();
+    if (!b) continue;
+    // Only suppress supplier duplicate when Shopify row is commercially viable.
+    if (getOfferRankingBucket(o) !== "out_of_stock") {
+      barcodes.add(b);
+    }
+  }
+  return supplierOffers.filter((o) => {
+    const b = (o.barcode || "").trim();
+    if (!b) return true;
+    return !barcodes.has(b);
+  });
+}
+
+function dedupeOffersByIdentity(offers: OfferRow[]) {
   const bestByKey = new Map<string, OfferRow>();
 
   for (const offer of offers) {
-    const key =
-      (offer.barcode && offer.barcode.trim()) ||
-      `no-barcode:${offer.id}`;
-
+    const key = offerIdentityKey(offer);
     const existing = bestByKey.get(key);
 
     if (!existing) {
@@ -132,13 +248,25 @@ function dedupeOffersByBarcode(offers: OfferRow[]) {
       continue;
     }
 
-    if (newScore === existingScore) {
-      const existingPrice = Number(existing.calculated_sale_price ?? 999999);
-      const newPrice = Number(offer.calculated_sale_price ?? 999999);
+    if (newScore > existingScore) {
+      continue;
+    }
 
-      if (newPrice < existingPrice) {
-        bestByKey.set(key, offer);
-      }
+    const existingShopify = offerIsShopifyLinked(existing);
+    const newShopify = offerIsShopifyLinked(offer);
+    if (newShopify && !existingShopify) {
+      bestByKey.set(key, offer);
+      continue;
+    }
+    if (existingShopify && !newShopify) {
+      continue;
+    }
+
+    const existingPrice = Number(existing.calculated_sale_price ?? 999999);
+    const newPrice = Number(offer.calculated_sale_price ?? 999999);
+
+    if (newPrice < existingPrice) {
+      bestByKey.set(key, offer);
     }
   }
 
@@ -282,14 +410,21 @@ async function fetchStudioBrowseFilms(
   db: IntelligenceSearchDb,
   requestedStudio: string,
 ) {
+  const terms = studioAliasTerms(requestedStudio);
+  const raw = terms.length
+    ? terms
+        .flatMap((t) => [`studio.ilike.%${t}%`, `supplier.ilike.%${t}%`])
+        .join(",")
+    : `studio.ilike.%${requestedStudio}%,supplier.ilike.%${requestedStudio}%`;
   const { data, error } = await db
     .from("catalog_items")
     .select(`
       film_id,
       studio,
+      supplier,
       active
     `)
-    .ilike("studio", `%${requestedStudio}%`)
+    .or(raw)
     .eq("active", true)
     .not("film_id", "is", null)
     .limit(200);
@@ -322,6 +457,110 @@ async function fetchStudioBrowseFilms(
   }
 
   return (filmData || []) as FilmRow[];
+}
+
+async function fetchLatestBrowseFilms(db: IntelligenceSearchDb) {
+  const { data, error } = await db
+    .from("catalog_items")
+    .select(`
+      film_id,
+      media_release_date,
+      availability_status,
+      active
+    `)
+    .eq("active", true)
+    .eq("media_type", "film")
+    .not("film_id", "is", null)
+    .order("media_release_date", { ascending: false, nullsFirst: false })
+    .limit(400);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const orderedFilmIds = Array.from(
+    new Set((data || []).map((row: any) => row.film_id).filter(Boolean)),
+  );
+
+  if (!orderedFilmIds.length) return [];
+
+  const { data: filmData, error: filmError } = await db
+    .from("films")
+    .select(`
+      id,
+      title,
+      director,
+      film_released,
+      tmdb_title,
+      genres,
+      top_cast
+    `)
+    .in("id", orderedFilmIds);
+
+  if (filmError) {
+    throw new Error(filmError.message);
+  }
+
+  const byId = new Map(((filmData || []) as FilmRow[]).map((f) => [f.id, f]));
+  return orderedFilmIds
+    .map((id) => byId.get(id))
+    .filter(Boolean) as FilmRow[];
+}
+
+async function fetchRecentReleasedBrowseFilms(db: IntelligenceSearchDb) {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - RECENT_RELEASE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data, error } = await db
+    .from("catalog_items")
+    .select(`
+      film_id,
+      media_release_date,
+      availability_status,
+      active
+    `)
+    .eq("active", true)
+    .eq("media_type", "film")
+    .not("film_id", "is", null)
+    .gte("media_release_date", from)
+    .lte("media_release_date", today)
+    .order("media_release_date", { ascending: false, nullsFirst: false })
+    .limit(400);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const orderedFilmIds = Array.from(
+    new Set((data || []).map((row: any) => row.film_id).filter(Boolean)),
+  );
+
+  if (!orderedFilmIds.length) return [];
+
+  const { data: filmData, error: filmError } = await db
+    .from("films")
+    .select(`
+      id,
+      title,
+      director,
+      film_released,
+      tmdb_title,
+      genres,
+      top_cast
+    `)
+    .in("id", orderedFilmIds);
+
+  if (filmError) {
+    throw new Error(filmError.message);
+  }
+
+  const byId = new Map(((filmData || []) as FilmRow[]).map((f) => [f.id, f]));
+  return orderedFilmIds
+    .map((id) => byId.get(id))
+    .filter(Boolean) as FilmRow[];
 }
 
 
@@ -388,6 +627,7 @@ export async function runIntelligenceSearch(
     const formatParam = url.searchParams.get("format")?.trim() || null;
     const franchiseParam = url.searchParams.get("franchise")?.trim() || null;
     const latestParam = url.searchParams.get("latest") === "true";
+    const recentReleasedParam = url.searchParams.get("recentReleased") === "true";
 
     const facetSource = [q, titleParam].filter(Boolean).join(" ").trim();
 
@@ -399,7 +639,8 @@ export async function runIntelligenceSearch(
       !!decadeParam ||
       !!yearParam ||
       !!personParam ||
-      !!franchiseParam;
+      !!franchiseParam ||
+      latestParam;
 
     if (!hasFocus) {
       return Response.json({
@@ -475,10 +716,26 @@ export async function runIntelligenceSearch(
       !personParam &&
       (!!requestedGenre || !!exactYear || !!decadeStart);
 
+    const latestBrowseMode =
+      latestQuery &&
+      !searchTerm &&
+      !titleParam &&
+      !requestedStudio &&
+      !personParam &&
+      !requestedGenre &&
+      !exactYear &&
+      !decadeStart;
+
+    const recentReleasedBrowseMode = latestBrowseMode && recentReleasedParam;
+
     let filmData: FilmRow[] = [];
 
     if (studioBrowseMode && requestedStudio) {
       filmData = await fetchStudioBrowseFilms(db, requestedStudio);
+    } else if (recentReleasedBrowseMode) {
+      filmData = await fetchRecentReleasedBrowseFilms(db);
+    } else if (latestBrowseMode) {
+      filmData = await fetchLatestBrowseFilms(db);
     } else if (genreYearBrowseMode) {
       filmData = await fetchGenreYearBrowseFilms(
         db,
@@ -549,6 +806,7 @@ export async function runIntelligenceSearch(
           franchiseParam,
           searchTerm,
           studioBrowseMode,
+          recentReleasedBrowseMode,
           genreYearBrowseMode,
           candidateFilmsBeforeFacetFilter: films.length,
         }),
@@ -582,16 +840,23 @@ export async function runIntelligenceSearch(
     }
 
     const scoreTerm = searchTerm;
-    const sortedFilms = [...films]
+    let sortedFilms: FilmRowScored[] = [...films]
       .map((film) => ({
         ...film,
         _score:
-          (studioBrowseMode || genreYearBrowseMode) && !scoreTerm
+          (studioBrowseMode || genreYearBrowseMode || latestBrowseMode) && !scoreTerm
             ? 50
             : scoreFilmMatch(film, scoreTerm),
       }))
       .sort((a, b) => b._score - a._score)
-      .slice(0, studioBrowseMode || genreYearBrowseMode ? 10 : 5);
+      .slice(0, studioBrowseMode || latestBrowseMode ? 80 : genreYearBrowseMode ? 25 : 5);
+
+    if (!(studioBrowseMode || genreYearBrowseMode || latestBrowseMode)) {
+      sortedFilms = filterLooseSuperstringFilmsWhenExactTitleExists(
+        sortedFilms,
+        scoreTerm,
+      );
+    }
 
     const filmIds = sortedFilms.map((f) => f.id);
 
@@ -650,6 +915,9 @@ export async function runIntelligenceSearch(
       );
     }
 
+    const mediaDisambiguationQuery =
+      [q, titleParam].filter(Boolean).join(" ").trim() || searchTerm || "";
+
     let filmsWithOffers = sortedFilms
       .map((film) => {
         const offersForFilm = allOffers.filter(
@@ -665,25 +933,45 @@ export async function runIntelligenceSearch(
           (o) => !o.shopify_variant_id && !o.shopify_product_id,
         );
 
-        const allCandidateOffers = [...shopifyOffers, ...supplierOffers];
+        const supplierFiltered = filterSupplierOffersRedundantWithShopify(
+          shopifyOffers,
+          supplierOffers,
+        );
+        const allCandidateOffers = [...shopifyOffers, ...supplierFiltered];
 
-        const dedupedCandidateOffers = dedupeOffersByBarcode(allCandidateOffers);
+        const dedupedCandidateOffers = dedupeOffersByIdentity(allCandidateOffers);
+        const offerRareDf = buildOfferRareTokenDf(dedupedCandidateOffers);
 
-        const rankedOffers = [...dedupedCandidateOffers].sort(
-          (a, b) =>
+        const releaseScopedOffers = recentReleasedParam
+          ? dedupedCandidateOffers.filter((offer) => {
+              if (!offer.media_release_date) return false;
+              const ts = releaseDateValue(offer.media_release_date);
+              if (!ts) return false;
+              const now = Date.now();
+              const from = now - RECENT_RELEASE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+              return ts <= now && ts >= from;
+            })
+          : dedupedCandidateOffers;
+
+        const rankedOffers = [...releaseScopedOffers].sort((a, b) => {
+          const ra =
             rankOfferWithPreferences(
               a,
               requestedFormat,
               requestedStudio,
               latestQuery,
-            ) -
+            ) +
+            mediaRetrievalRankAdjustment(mediaDisambiguationQuery, a, offerRareDf);
+          const rb =
             rankOfferWithPreferences(
               b,
               requestedFormat,
               requestedStudio,
               latestQuery,
-            ),
-        );
+            ) +
+            mediaRetrievalRankAdjustment(mediaDisambiguationQuery, b, offerRareDf);
+          return ra - rb;
+        });
 
         const bestOffer = rankedOffers[0] || null;
 
@@ -730,7 +1018,19 @@ export async function runIntelligenceSearch(
       })
       .filter((item) => item.offers.length > 0);
 
-    filmsWithOffers = sortFilmsWithOffersFinal(filmsWithOffers, latestQuery);
+    if (recentReleasedParam) {
+      filmsWithOffers = [...filmsWithOffers].sort((a, b) => {
+        const ad = releaseDateValue(a.bestOffer?.media_release_date);
+        const bd = releaseDateValue(b.bestOffer?.media_release_date);
+        if (ad !== bd) return bd - ad;
+        return Number(b.popularity?.popularity_score ?? 0) - Number(a.popularity?.popularity_score ?? 0);
+      });
+    } else {
+    filmsWithOffers = sortFilmsWithOffersFinal(filmsWithOffers, latestQuery, {
+      commercialRecencyFirst: studioBrowseMode || latestBrowseMode,
+      preferAvailableNow: studioBrowseMode && !latestQuery,
+    });
+    }
 
     return Response.json({
       query: q || titleParam,

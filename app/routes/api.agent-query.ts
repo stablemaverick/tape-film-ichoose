@@ -10,6 +10,119 @@ function normalizeText(text: string) {
   return text.trim().toLowerCase();
 }
 
+type IntentMode =
+  | "all"
+  | "new_releases"
+  | "film_title"
+  | "director"
+  | "label_studio"
+  | "in_stock"
+  | "preorders"
+  | "best_edition";
+
+function normalizeIntentMode(raw: unknown): IntentMode {
+  const mode = String(raw || "").trim().toLowerCase();
+  switch (mode) {
+    case "new_releases":
+    case "film_title":
+    case "director":
+    case "label_studio":
+    case "in_stock":
+    case "preorders":
+    case "best_edition":
+      return mode;
+    default:
+      return "all";
+  }
+}
+
+function intentModeAllowsBlankQuery(mode: IntentMode): boolean {
+  return mode === "new_releases" || mode === "in_stock" || mode === "preorders";
+}
+
+function applyIntentModePrior(
+  structured: StructuredTapeAgentParse,
+  mode: IntentMode,
+  message: string,
+): StructuredTapeAgentParse {
+  if (mode === "all") return structured;
+
+  const base = {
+    ...structured,
+    facets: { ...structured.facets },
+    secondaryIntents: [...structured.secondaryIntents],
+  };
+
+  if (mode === "film_title") {
+    const title = cleanupExtractedQuery(message).trim();
+    if (title) base.facets.title = title;
+    base.primaryIntent = "title_lookup";
+    base.residualQuery = title || message.trim();
+    return base;
+  }
+
+  if (mode === "director") {
+    const person = extractPersonQuery(message).trim() || cleanupExtractedQuery(message).trim();
+    if (person) base.facets.person = person;
+    base.facets.personRole = "director";
+    base.primaryIntent = "person";
+    base.residualQuery = person || message.trim();
+    return base;
+  }
+
+  if (mode === "label_studio") {
+    const studio = String(base.facets.studio || "").trim() || cleanupExtractedQuery(message).trim();
+    if (studio) base.facets.studio = studio;
+    base.primaryIntent = "studio_browse";
+    base.residualQuery = studio || message.trim();
+    return base;
+  }
+
+  if (mode === "in_stock") {
+    const q = extractAvailabilityQuery(message).trim();
+    base.primaryIntent = "availability";
+    base.facets.availabilityOnly = true;
+    base.facets.availabilityIncludePreorder = false;
+    delete base.facets.title;
+    base.facets.availabilityBrowse = true;
+    base.residualQuery = q;
+    return base;
+  }
+
+  if (mode === "preorders") {
+    const q = extractPreorderQuery(message).trim();
+    base.primaryIntent = "preorder";
+    base.facets.preorderOnly = true;
+    base.facets.latest = true;
+    base.residualQuery = q || message.trim();
+    return base;
+  }
+
+  if (mode === "best_edition") {
+    const q = extractBestEditionQuery(message).trim() || cleanupExtractedQuery(message).trim();
+    base.primaryIntent = "best_edition";
+    base.facets.bestEdition = true;
+    if (q) {
+      base.facets.title = q;
+      base.residualQuery = q;
+    }
+    return base;
+  }
+
+  if (mode === "new_releases") {
+    base.facets.latest = true;
+    if (!base.facets.title && !base.facets.person && !base.facets.studio) {
+      base.residualQuery = "";
+    }
+    if (base.primaryIntent === "search") {
+      base.primaryIntent = "discovery";
+    }
+    return base;
+  }
+
+  return base;
+}
+
 function parseCustomerQuery(message: string) {
   const q = normalizeText(message);
 
@@ -38,6 +151,17 @@ function parseCustomerQuery(message: string) {
     preorder,
     bestEdition,
     person,
+  };
+}
+
+function wishlistTargetFromOption(opt: any) {
+  if (!opt) return null;
+  return {
+    catalogItemId: opt.catalogItemId ?? opt.id ?? null,
+    filmId: opt.filmId ?? null,
+    shopifyVariantId: opt.shopifyVariantId ?? null,
+    filmTitle: opt.filmTitle ?? null,
+    title: opt.title ?? null,
   };
 }
 
@@ -380,6 +504,89 @@ function formatAvailability(opt: any) {
   return "Out of stock";
 }
 
+function availabilityForUi(offer: any): string | null {
+  const bucket = String(offer?.rankingBucket || "").trim();
+  if (bucket === "preorder") return "preorder";
+  if (bucket === "store_in_stock") return "store_stock";
+  if (bucket === "supplier_in_stock") return "supplier_stock";
+  return offer?.availability_status || null;
+}
+
+function studioMatchTerms(studio: string | null | undefined): string[] {
+  const s = String(studio || "").trim().toLowerCase();
+  if (!s) return [];
+  if (s !== "disney") return [s];
+  return [
+    "disney",
+    "walt disney",
+    "walt disney pictures",
+    "buena vista",
+    "touchstone",
+    "pixar",
+    "marvel",
+    "lucasfilm",
+    "20th century studios",
+    "20th century fox",
+    "fox",
+    "searchlight",
+  ];
+}
+
+function offerMatchesStudioTerms(offer: any, terms: string[]): boolean {
+  if (!terms.length) return false;
+  const studio = String(offer?.studio || "").toLowerCase();
+  const supplier = String(offer?.supplier || "").toLowerCase();
+  return terms.some((t) => studio.includes(t) || supplier.includes(t));
+}
+
+function directorMatchStrength(filmResult: any, person: string): number {
+  const wanted = String(person || "").trim().toLowerCase();
+  if (!wanted) return 0;
+  const d = String(filmResult?.film?.director || "").trim().toLowerCase();
+  if (!d) return 0;
+  if (d === wanted) return 3;
+  if (d.startsWith(wanted)) return 2;
+  if (d.includes(wanted)) return 1;
+  return 0;
+}
+
+function bucketPriorityForBrowse(bucket: string | null | undefined): number {
+  const b = String(bucket || "");
+  if (b === "store_in_stock") return 1;
+  if (b === "supplier_in_stock") return 2;
+  if (b === "preorder") return 3;
+  return 4;
+}
+
+function releaseTs(value: string | null | undefined): number {
+  const ts = new Date(String(value || "")).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function mapOfferToAgentOption(filmResult: any, offer: any) {
+  return {
+    id: offer.id,
+    catalogItemId: offer.id,
+    filmId: filmResult.film.id,
+    filmTitle: filmResult.film.title,
+    director: filmResult.film.director,
+    filmReleased: filmResult.film.filmReleased,
+    title: offer.title,
+    format: offer.format,
+    studio: offer.studio,
+    barcode: offer.barcode,
+    mediaReleaseDate: offer.media_release_date,
+    price: offer.calculated_sale_price,
+    costGbp: offer.cost_price,
+    availability: availabilityForUi(offer),
+    supplierStock: offer.supplier_stock_status || 0,
+    rankingBucket: offer.rankingBucket || null,
+    productCode: offer.supplier_sku || null,
+    sourceType: offer.source_type || null,
+    shopifyVariantId: offer.shopify_variant_id || null,
+  };
+}
+
 function buildRecommendationReason(opt: any) {
   if (opt.availability === "store_stock") {
     return "Best option because it is in stock now at TAPE Film.";
@@ -435,47 +642,53 @@ export async function action({ request }: { request: Request }) {
   try {
     const body = await request.json();
     const message = String(body.message || "").trim();
+    const intentMode = normalizeIntentMode(body.intentMode);
 
-    if (!message) {
+    if (!message && !intentModeAllowsBlankQuery(intentMode)) {
       return Response.json({ error: "No message provided" }, { status: 400 });
     }
 
     let structured = parseTapeAgentQueryDeterministic(message);
+    structured = applyIntentModePrior(structured, intentMode, message);
 
     try {
-      const llmParsed = await parseQueryWithLLM(message);
-      structured = mergeLlmTapeAgentParse(structured, {
-        cleaned_query: llmParsed.cleaned_query,
-        franchise: llmParsed.franchise,
-        person: llmParsed.person,
-        studio: llmParsed.studio,
-        genre: llmParsed.genre,
-        decade: llmParsed.decade,
-        year: llmParsed.year,
-        format: llmParsed.format,
-      });
+      if (message) {
+        const llmParsed = await parseQueryWithLLM(message);
+        structured = mergeLlmTapeAgentParse(structured, {
+          cleaned_query: llmParsed.cleaned_query,
+          franchise: llmParsed.franchise,
+          person: llmParsed.person,
+          studio: llmParsed.studio,
+          genre: llmParsed.genre,
+          decade: llmParsed.decade,
+          year: llmParsed.year,
+          format: llmParsed.format,
+        });
+      }
     } catch {
-      const fallback = parseCustomerQuery(message);
-      if (fallback.intent === "person") {
-        structured = {
-          ...structured,
-          residualQuery: extractPersonQuery(message),
-        };
-      } else if (fallback.intent === "availability") {
-        structured = {
-          ...structured,
-          residualQuery: extractAvailabilityQuery(message),
-        };
-      } else if (fallback.intent === "preorder") {
-        structured = {
-          ...structured,
-          residualQuery: extractPreorderQuery(message),
-        };
-      } else if (fallback.intent === "best_edition") {
-        structured = {
-          ...structured,
-          residualQuery: extractBestEditionQuery(message),
-        };
+      if (intentMode === "all") {
+        const fallback = parseCustomerQuery(message);
+        if (fallback.intent === "person") {
+          structured = {
+            ...structured,
+            residualQuery: extractPersonQuery(message),
+          };
+        } else if (fallback.intent === "availability") {
+          structured = {
+            ...structured,
+            residualQuery: extractAvailabilityQuery(message),
+          };
+        } else if (fallback.intent === "preorder") {
+          structured = {
+            ...structured,
+            residualQuery: extractPreorderQuery(message),
+          };
+        } else if (fallback.intent === "best_edition") {
+          structured = {
+            ...structured,
+            residualQuery: extractBestEditionQuery(message),
+          };
+        }
       }
     }
 
@@ -502,7 +715,9 @@ export async function action({ request }: { request: Request }) {
 
     if (!searchQuery) {
       if (!browseAvailability) {
-        searchQuery = message.trim().toLowerCase();
+        if (intentMode !== "new_releases") {
+          searchQuery = message.trim().toLowerCase();
+        }
       }
     }
 
@@ -571,6 +786,10 @@ export async function action({ request }: { request: Request }) {
         omitFranchise: availabilityMode === "title_anchored",
       });
 
+      if (intentMode === "new_releases") {
+        url.searchParams.set("recentReleased", "true");
+      }
+
       if (structured.primaryIntent === "preorder") {
         url.searchParams.set("latest", "true");
       }
@@ -601,14 +820,12 @@ export async function action({ request }: { request: Request }) {
     // --- STRICT FILTERING (v1 deterministic rules) ---
     
     if (llmStudio) {
-      const wantedStudio = llmStudio.trim().toLowerCase();
+      const studioTerms = studioMatchTerms(llmStudio);
     
       films = films.filter((filmResult: any) => {
         const offers = Array.isArray(filmResult.offers) ? filmResult.offers : [];
     
-        return offers.some((offer: any) =>
-          String(offer?.studio || "").toLowerCase().includes(wantedStudio)
-        );
+        return offers.some((offer: any) => offerMatchesStudioTerms(offer, studioTerms));
       });
     }
     
@@ -695,6 +912,8 @@ export async function action({ request }: { request: Request }) {
       return Response.json({
         reply,
         intent: parsed.intent,
+        wishlistSuggested: false,
+        wishlistPrompt: null,
         structuredParse: {
           primaryIntent: structured.primaryIntent,
           secondaryIntents: structured.secondaryIntents,
@@ -706,44 +925,87 @@ export async function action({ request }: { request: Request }) {
       });
     }
 
-    const options = films.slice(0, 5).flatMap((filmResult: any) => {
-      let offers = filmResult.offers || [];
-    
-      // --- enforce studio at OFFER level ---
-      if (llmStudio) {
-        const wantedStudio = llmStudio.trim().toLowerCase();
-    
-        const studioMatchedOffers = offers.filter((offer: any) =>
-          String(offer?.studio || "").toLowerCase().includes(wantedStudio)
-        );
-    
-        if (studioMatchedOffers.length > 0) {
-          offers = studioMatchedOffers;
-        }
-      }
-    
-      return offers.slice(0, 2).map((offer: any) => ({
-        id: offer.id,
-        catalogItemId: offer.id,
-        filmId: filmResult.film.id,
-        filmTitle: filmResult.film.title,
-        director: filmResult.film.director,
-        filmReleased: filmResult.film.filmReleased,
-        title: offer.title,
-        format: offer.format,
-        studio: offer.studio,
-        barcode: offer.barcode,
-        mediaReleaseDate: offer.media_release_date,
-        price: offer.calculated_sale_price,
-        costGbp: offer.cost_price,
-        availability: offer.availability_status || null,
-        supplierStock: offer.supplier_stock_status || 0,
-        rankingBucket: offer.rankingBucket || null,
-        productCode: offer.supplier_sku || null,
-        sourceType: offer.source_type || null,
-        shopifyVariantId: offer.shopify_variant_id || null,
-      }));
-    });
+    const browsePresentationMode =
+      intentMode === "new_releases" ||
+      intentMode === "preorders" ||
+      intentMode === "label_studio" ||
+      intentMode === "in_stock" ||
+      intentMode === "director";
+
+    if (intentMode === "director") {
+      const wantedDirector = String(structured.facets.person || searchQuery || "").trim();
+      films = [...films].sort((a: any, b: any) => {
+        const as = directorMatchStrength(a, wantedDirector);
+        const bs = directorMatchStrength(b, wantedDirector);
+        if (as !== bs) return bs - as;
+        const ab = bucketPriorityForBrowse(a?.bestOffer?.rankingBucket);
+        const bb = bucketPriorityForBrowse(b?.bestOffer?.rankingBucket);
+        if (ab !== bb) return ab - bb;
+        const ad = releaseTs(a?.bestOffer?.media_release_date);
+        const bd = releaseTs(b?.bestOffer?.media_release_date);
+        if (ad !== bd) return bd - ad;
+        return Number(b?.popularity?.popularity_score ?? 0) - Number(a?.popularity?.popularity_score ?? 0);
+      });
+    }
+
+    /** Was 2; too few when intelligence-search returns in-stock Shopify + supplier + preorder Shopify. */
+    const MAX_OFFERS_PER_FILM_FOR_AGENT = 4;
+
+    const options = browsePresentationMode
+      ? films.slice(0, 12).flatMap((filmResult: any) => {
+          let offers = filmResult.offers || [];
+
+          if (llmStudio) {
+            const terms = studioMatchTerms(llmStudio);
+            const studioMatchedOffers = offers.filter((offer: any) =>
+              offerMatchesStudioTerms(offer, terms),
+            );
+            if (studioMatchedOffers.length > 0) {
+              offers = studioMatchedOffers;
+            }
+          }
+
+          const bestOffer =
+            intentMode === "preorders"
+              ? offers.find((offer: any) => {
+                  const bucket = String(offer?.rankingBucket || "");
+                  return bucket === "preorder";
+                }) || offers[0]
+              : offers[0];
+          if (!bestOffer) return [];
+          return [mapOfferToAgentOption(filmResult, bestOffer)];
+        })
+      : films.slice(0, 5).flatMap((filmResult: any) => {
+          let offers = filmResult.offers || [];
+
+          if (debugAgent && offers.length > MAX_OFFERS_PER_FILM_FOR_AGENT) {
+            console.log(
+              "[tape-agent] truncating offers for film",
+              filmResult.film?.id,
+              "from",
+              offers.length,
+              "to",
+              MAX_OFFERS_PER_FILM_FOR_AGENT,
+            );
+          }
+
+          // --- enforce studio at OFFER level ---
+          if (llmStudio) {
+            const terms = studioMatchTerms(llmStudio);
+
+            const studioMatchedOffers = offers.filter((offer: any) =>
+              offerMatchesStudioTerms(offer, terms),
+            );
+
+            if (studioMatchedOffers.length > 0) {
+              offers = studioMatchedOffers;
+            }
+          }
+
+          return offers
+            .slice(0, MAX_OFFERS_PER_FILM_FOR_AGENT)
+            .map((offer: any) => mapOfferToAgentOption(filmResult, offer));
+        });
     
     let filteredOptions = options;
 
@@ -756,9 +1018,7 @@ export async function action({ request }: { request: Request }) {
     
     if (parsed.intent === "preorder") {
       const preorderOnly = options.filter((opt: any) => opt.rankingBucket === "preorder");
-      if (preorderOnly.length > 0) {
-        filteredOptions = preorderOnly;
-      }
+      filteredOptions = preorderOnly;
     }
     
     if (parsed.intent === "availability") {
@@ -804,28 +1064,47 @@ export async function action({ request }: { request: Request }) {
     }
     	
     
-    const recommendedOption = filteredOptions[0] || null;
-    const alternativeOptions =
-      parsed.intent === "best_edition"
+    const recommendedOption = browsePresentationMode ? null : filteredOptions[0] || null;
+    const alternativeOptions = browsePresentationMode
+      ? []
+      : parsed.intent === "best_edition"
         ? filteredOptions.slice(1, 3)
         : filteredOptions.slice(1, 5);
+
+    const salesCopy = browsePresentationMode
+      ? {
+          reply:
+            intentMode === "preorders"
+              ? "Here are upcoming release options across different films."
+              : intentMode === "new_releases"
+                ? "Here are recently released options across different films."
+                : intentMode === "label_studio"
+                  ? "Here are label/studio matches across different films."
+                : intentMode === "director"
+                  ? "Here are director matches across different films."
+                  : "Here are in-stock options across different films.",
+          upsell: null,
+          wishlistPrompt: null,
+        }
+      : buildSalesReply({
+          message,
+          intent: parsed.intent,
+          recommendedOption: recommendedOption
+            ? {
+                ...recommendedOption,
+                availabilityLabel: formatAvailability(recommendedOption),
+              }
+            : null,
+          alternativeOptions,
+        });
     
-    const salesCopy = buildSalesReply({
-      message,
-      intent: parsed.intent,
-      recommendedOption: recommendedOption
-        ? {
-            ...recommendedOption,
-            availabilityLabel: formatAvailability(recommendedOption),
-          }
-        : null,
-      alternativeOptions,
-    });
-    
+    const wishlistSuggested = Boolean(salesCopy.wishlistPrompt);
+
     return Response.json({
       reply: salesCopy.reply,
       upsell: salesCopy.upsell,
       wishlistPrompt: salesCopy.wishlistPrompt,
+      wishlistSuggested,
       intent: parsed.intent,
         structuredParse: {
           primaryIntent: structured.primaryIntent,
@@ -840,15 +1119,18 @@ export async function action({ request }: { request: Request }) {
             ...recommendedOption,
             availabilityLabel: formatAvailability(recommendedOption),
             recommendationReason: buildRecommendationReason(recommendedOption),
+            wishlistTarget: wishlistTargetFromOption(recommendedOption),
           }
         : null,
       alternativeOptions: alternativeOptions.map((opt: any) => ({
         ...opt,
         availabilityLabel: formatAvailability(opt),
+        wishlistTarget: wishlistTargetFromOption(opt),
       })),
       options: filteredOptions.map((opt: any) => ({
         ...opt,
         availabilityLabel: formatAvailability(opt),
+        wishlistTarget: wishlistTargetFromOption(opt),
       })),
     });
   } catch (err) {
