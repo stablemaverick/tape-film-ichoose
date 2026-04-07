@@ -115,6 +115,13 @@ describe("parseTapeAgentQueryDeterministic golden set", () => {
       },
     },
     {
+      query: "latest disney titles",
+      expect: {
+        primaryIntent: "studio_browse",
+        facets: { studio: "disney", latest: true },
+      },
+    },
+    {
       query: "star wars 4k",
       expect: {
         primaryIntent: "franchise",

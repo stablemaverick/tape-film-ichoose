@@ -18,8 +18,8 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test:agent:e2e": "node --import tsx/esm --test tests/intelligence-search.ranking.e2e.test.ts tests/intelligence-search.availability.e2e.test.ts tests/intelligence-search.release-date.e2e.test.ts",
-    "test:agent": "node --import tsx/esm --test tests/tape-agent-query-parser.golden.test.ts tests/tape-agent-query-parser.merge.test.ts tests/tape-agent-availability-modes.test.ts tests/film-offer-ranking.test.ts tests/api.agent-query.behavior.test.ts tests/intelligence-search.ranking.e2e.test.ts tests/intelligence-search.availability.e2e.test.ts tests/intelligence-search.release-date.e2e.test.ts"
+    "test:agent:e2e": "node --import tsx/esm --test tests/intelligence-search.ranking.e2e.test.ts tests/intelligence-search.offer-dedupe.e2e.test.ts tests/intelligence-search.exact-title-film.e2e.test.ts tests/intelligence-search.availability.e2e.test.ts tests/intelligence-search.release-date.e2e.test.ts",
+    "test:agent": "node --import tsx/esm --test tests/tape-agent-query-parser.golden.test.ts tests/tape-agent-query-parser.merge.test.ts tests/tape-agent-availability-modes.test.ts tests/film-offer-ranking.test.ts tests/media-offer-ranking-tweaks.test.ts tests/api.agent-query.behavior.test.ts tests/intelligence-search.ranking.e2e.test.ts tests/intelligence-search.offer-dedupe.e2e.test.ts tests/intelligence-search.exact-title-film.e2e.test.ts tests/intelligence-search.availability.e2e.test.ts tests/intelligence-search.release-date.e2e.test.ts"
   },
   "type": "module",
   "engines": {

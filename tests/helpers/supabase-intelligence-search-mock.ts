@@ -24,6 +24,7 @@ export function createSequentialSupabaseMock(responses: SupabaseResponseRow[]) {
       "not",
       "gte",
       "lte",
+      "order",
       "limit",
     ]) {
       chain[m] = () => chain;

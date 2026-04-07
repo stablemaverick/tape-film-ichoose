@@ -781,3 +781,151 @@ test("upcoming releases + second sight includes future supplier_stock/variant of
     else process.env.OPENAI_API_KEY = prevKey;
   }
 });
+
+test("upcoming releases + criterion returns multiple future-dated results", async () => {
+  const prevKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "";
+  const origFetch = globalThis.fetch;
+
+  const films = [
+    {
+      film: { id: "fc1", title: "Criterion Future One", director: "A", filmReleased: "1970-01-01", genres: "Drama", topCast: null },
+      offers: [
+        {
+          id: "oc1",
+          title: "Criterion Future One",
+          format: "4k",
+          studio: "Criterion",
+          supplier: "Criterion",
+          supplier_sku: "c1",
+          barcode: "c1",
+          cost_price: 10,
+          calculated_sale_price: 30,
+          supplier_stock_status: 2,
+          availability_status: "supplier_stock",
+          media_release_date: "2099-07-01",
+          rankingBucket: "preorder",
+        },
+      ],
+    },
+    {
+      film: { id: "fc2", title: "Criterion Future Two", director: "B", filmReleased: "1971-01-01", genres: "Drama", topCast: null },
+      offers: [
+        {
+          id: "oc2",
+          title: "Criterion Future Two",
+          format: "blu-ray",
+          studio: "Criterion Collection",
+          supplier: "Criterion",
+          supplier_sku: "c2",
+          barcode: "c2",
+          cost_price: 9,
+          calculated_sale_price: 26,
+          supplier_stock_status: 1,
+          availability_status: "preorder",
+          media_release_date: "2099-06-15",
+          rankingBucket: "preorder",
+        },
+      ],
+    },
+  ];
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    if (String(input).includes("/api/intelligence-search")) return Response.json({ films });
+    return Response.json({ films: [] });
+  };
+
+  try {
+    const { action } = await import("../app/routes/api.agent-query.js");
+    const req = new Request("http://local.test/api/agent-query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "criterion upcoming releases", intentMode: "preorders" }),
+    });
+    const res = await action({ request: req });
+    const body = (await res.json()) as { options: { id: string }[] };
+    assert.equal(res.status, 200);
+    assert.deepEqual(new Set(body.options.map((o) => o.id)), new Set(["oc1", "oc2"]));
+  } finally {
+    globalThis.fetch = origFetch;
+    if (prevKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = prevKey;
+  }
+});
+
+test("new releases + second sight returns multiple recent results", async () => {
+  const prevKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "";
+  const origFetch = globalThis.fetch;
+  const urls: string[] = [];
+
+  const films = [
+    {
+      film: { id: "fr1", title: "Second Sight Recent One", director: "A", filmReleased: "1980-01-01", genres: "Horror", topCast: null },
+      offers: [
+        {
+          id: "or1",
+          title: "Second Sight Recent One",
+          format: "4k",
+          studio: "Second Sight Films",
+          supplier: "Second Sight",
+          supplier_sku: "r1",
+          barcode: "r1",
+          cost_price: 11,
+          calculated_sale_price: 33,
+          supplier_stock_status: 4,
+          availability_status: "supplier_stock",
+          media_release_date: "2025-01-10",
+          rankingBucket: "supplier_in_stock",
+        },
+      ],
+    },
+    {
+      film: { id: "fr2", title: "Second Sight Recent Two", director: "B", filmReleased: "1981-01-01", genres: "Horror", topCast: null },
+      offers: [
+        {
+          id: "or2",
+          title: "Second Sight Recent Two",
+          format: "blu-ray",
+          studio: "Second Sight",
+          supplier: "Second Sight Limited",
+          supplier_sku: "r2",
+          barcode: "r2",
+          cost_price: 9,
+          calculated_sale_price: 25,
+          supplier_stock_status: 2,
+          availability_status: "supplier_stock",
+          media_release_date: "2025-01-08",
+          rankingBucket: "supplier_in_stock",
+        },
+      ],
+    },
+  ];
+
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const u = String(input);
+    urls.push(u);
+    if (u.includes("/api/intelligence-search")) return Response.json({ films });
+    return Response.json({ films: [] });
+  };
+
+  try {
+    const { action } = await import("../app/routes/api.agent-query.js");
+    const req = new Request("http://local.test/api/agent-query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "second sight new releases", intentMode: "new_releases" }),
+    });
+    const res = await action({ request: req });
+    const body = (await res.json()) as { options: { id: string }[] };
+    assert.equal(res.status, 200);
+    assert.deepEqual(new Set(body.options.map((o) => o.id)), new Set(["or1", "or2"]));
+    const intel = urls.find((u) => u.includes("/api/intelligence-search"));
+    assert.ok(intel);
+    assert.equal(new URL(intel!).searchParams.get("recentReleased"), "true");
+  } finally {
+    globalThis.fetch = origFetch;
+    if (prevKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = prevKey;
+  }
+});

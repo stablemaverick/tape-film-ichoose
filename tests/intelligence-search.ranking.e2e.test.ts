@@ -740,4 +740,56 @@ describe("intelligence-search ranking (A4) E2E", () => {
     const body = (await res.json()) as { films: { film: { title: string } }[] };
     assert.equal(body.films[0]?.film?.title, "Second Sight Vendor Match");
   });
+
+  test("studio+latest trims after filtering/ranking, not before", async () => {
+    const films: FilmFixture[] = [];
+    const popularity: PopularityFixture[] = [];
+    const offers: OfferFixture[] = [];
+    const browseSeedRows: Array<{ film_id: string; studio: string; active: boolean }> = [];
+
+    for (let i = 0; i < 120; i += 1) {
+      const id = `f-trim-${i}`;
+      films.push({
+        id,
+        title: `Trim Film ${i}`,
+        director: "D",
+        film_released: "2000-01-01",
+        tmdb_title: null,
+        genres: "Drama",
+        top_cast: null,
+      });
+      popularity.push({ film_id: id, popularity_score: 0 });
+
+      const isFutureTail = i >= 110;
+      offers.push({
+        id: `o-trim-${i}`,
+        title: `Trim Offer ${i}`,
+        format: "blu-ray",
+        studio: "Criterion",
+        supplier: "Criterion",
+        film_id: id,
+        active: true,
+        supplier_stock_status: isFutureTail ? 1 : 3,
+        availability_status: isFutureTail ? "preorder" : "supplier_stock",
+        media_release_date: isFutureTail ? "2099-08-01" : "2024-01-01",
+        barcode: `tb-${i}`,
+      });
+      browseSeedRows.push({ film_id: id, studio: "Criterion", active: true });
+    }
+
+    const db = createSequentialSupabaseMock([
+      { data: browseSeedRows, error: null },
+      { data: films, error: null },
+      { data: popularity, error: null },
+      { data: offers, error: null },
+    ]);
+
+    const { runIntelligenceSearch } = await import("../app/routes/api.intelligence-search.js");
+    const req = new Request("http://test/api/intelligence-search?q=criterion&studio=criterion&latest=true");
+    const res = await runIntelligenceSearch(req, db as never);
+    const body = (await res.json()) as { films: { film: { id: string } }[] };
+    const ids = new Set(body.films.map((f) => f.film.id));
+    assert.ok(ids.has("f-trim-110"));
+    assert.ok(ids.has("f-trim-119"));
+  });
 });

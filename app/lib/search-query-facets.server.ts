@@ -18,6 +18,7 @@ export function detectFormat(query: string): "4k" | "blu-ray" | "dvd" | null {
 export function detectStudio(query: string): string | null {
   const q = normalizeSearchText(query);
   const studios: { key: RegExp; value: string }[] = [
+    { key: /\b(disney|walt disney|walt disney pictures|buena vista|touchstone|pixar|marvel|lucasfilm|20th century studios|20th century fox|\bfox\b|searchlight)\b/i, value: "disney" },
     { key: /\barrow\b/i, value: "arrow" },
     { key: /\bcriterion\b/i, value: "criterion" },
     { key: /\bsecond sight\b/i, value: "second sight" },
@@ -172,6 +173,8 @@ export function stripDetectedFacetsFromQuery(
 
   if (facets.studio) {
     const map: Record<string, RegExp> = {
+      disney:
+        /\b(disney|walt disney|walt disney pictures|buena vista|touchstone|pixar|marvel|lucasfilm|20th century studios|20th century fox|\bfox\b|searchlight)\b/gi,
       arrow: /\barrow\b/gi,
       criterion: /\bcriterion\b/gi,
       "second sight": /\bsecond sight\b/gi,

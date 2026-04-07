@@ -24,7 +24,7 @@ api_version = "2026-04"
   uri = "/webhooks/orders-paid"
 
   [access_scopes]
-  scopes = "read_products,read_inventory,read_orders,write_draft_orders,write_metaobject_definitions,write_metaobjects,write_products,read_publications,write_publications"
+  scopes = "read_products,read_inventory,read_customers,read_orders,write_draft_orders,write_metaobject_definitions,write_metaobjects,write_products,read_publications,write_publications"
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
 

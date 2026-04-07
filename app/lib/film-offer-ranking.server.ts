@@ -24,17 +24,36 @@ function normalize(text: string | null | undefined) {
   return (text || "").trim().toLowerCase();
 }
 
+function parseReleaseDateMs(value: string | null | undefined): number {
+  if (!value) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+
+  const direct = new Date(raw).getTime();
+  if (!Number.isNaN(direct)) return direct;
+
+  // Supplier feeds can contain dd/mm/yyyy or dd-mm-yyyy.
+  const dmy = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    const year = Number(dmy[3]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return Date.UTC(year, month - 1, day);
+    }
+  }
+
+  return 0;
+}
+
 export function isFutureRelease(value: string | null | undefined) {
-  if (!value) return false;
-  const ts = new Date(value).getTime();
-  if (Number.isNaN(ts)) return false;
+  const ts = parseReleaseDateMs(value);
+  if (!ts) return false;
   return ts > Date.now();
 }
 
 export function releaseDateValue(value: string | null | undefined) {
-  if (!value) return 0;
-  const ts = new Date(value).getTime();
-  return Number.isNaN(ts) ? 0 : ts;
+  return parseReleaseDateMs(value);
 }
 
 /**
@@ -103,14 +122,24 @@ const BUCKET_ORDER: Record<string, number> = {
 export function sortFilmsWithOffersFinal<T extends RankingFilmOfferItem>(
   items: T[],
   latestQuery: boolean,
+  options?: { commercialRecencyFirst?: boolean; preferAvailableNow?: boolean },
 ): T[] {
+  const commercialRecencyFirst = latestQuery || options?.commercialRecencyFirst === true;
+  const bucketOrder = options?.preferAvailableNow
+    ? {
+        store_in_stock: 1,
+        supplier_in_stock: 2,
+        preorder: 3,
+        out_of_stock: 4,
+      }
+    : BUCKET_ORDER;
   return [...items].sort((a, b) => {
-    if (latestQuery) {
+    if (commercialRecencyFirst) {
       const aBucket = a.bestOffer?.rankingBucket;
       const bBucket = b.bestOffer?.rankingBucket;
       if (aBucket !== bBucket) {
-        return (BUCKET_ORDER[aBucket || "out_of_stock"] ?? 99) -
-          (BUCKET_ORDER[bBucket || "out_of_stock"] ?? 99);
+        return (bucketOrder[aBucket || "out_of_stock"] ?? 99) -
+          (bucketOrder[bBucket || "out_of_stock"] ?? 99);
       }
       const aDate = releaseDateValue(a.bestOffer?.media_release_date);
       const bDate = releaseDateValue(b.bestOffer?.media_release_date);

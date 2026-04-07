@@ -13,7 +13,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 import requests
 from requests.exceptions import ReadTimeout, RequestException
@@ -92,6 +92,190 @@ def fetch_rows_needing_enrichment(
             break
         offset += take
     return rows
+
+
+def run_enrichment_for_rows(
+    supabase,
+    rows: List[Dict[str, Any]],
+    *,
+    tmdb_api_key: str,
+    tmdb_api_url: str = "https://api.themoviedb.org/3",
+    max_groups: int = 1000,
+    sleep_ms: int = 250,
+    stats: Optional[EnrichmentPassStats] = None,
+    dry_run: bool = False,
+    log_style: Literal["recovery", "maintenance"] = "recovery",
+) -> None:
+    """
+    Run the same TMDB search + detail fetch + ``build_tmdb_update`` path as ``run_enrich``,
+    for an explicit row list (e.g. maintenance targeted retry).
+
+    Uses ``clean_text(source_title)`` only for empty-title checks; TMDB search uses
+    ``search_tmdb_movie_safe(source_title, ...)`` so routing matches production.
+
+    When ``dry_run`` is True, no Supabase updates are applied.
+
+    ``log_style='recovery'`` matches historical ``run_enrich`` console lines; ``maintenance``
+    adds row id, ``search_type``, and ``tmdb_id`` for one-off tooling.
+    """
+    if not rows:
+        print("No rows to process.")
+        return
+
+    barcode_groups, no_barcode_rows = group_rows_by_barcode(rows)
+
+    query_cache: Dict[str, Dict[str, Any] | None] = {}
+    details_cache: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+
+    processed_groups = 0
+    processed_rows = 0
+
+    def _apply_update(row_ids: List[str], update_data: Dict[str, Any]) -> None:
+        if dry_run:
+            return
+        update_rows_by_ids(supabase, row_ids, update_data)
+
+    for barcode, grouped in barcode_groups.items():
+        if processed_groups >= max_groups:
+            break
+        rep = grouped[0]
+        source_title = clean_text(rep.get("title")) or ""
+        source_year = extract_year(rep.get("film_released"))
+        cleaned = normalize_match_title(source_title)
+
+        if not cleaned:
+            st = "no_clean_title"
+            upd = {"tmdb_match_status": st, "tmdb_last_refreshed_at": now_iso()}
+            _apply_update([r["id"] for r in grouped], upd)
+            _enrichment_bump_stats(stats, len(grouped), st)
+            processed_groups += 1
+            processed_rows += len(grouped)
+            if stats is not None:
+                stats.processed_barcode_groups += 1
+            if log_style == "maintenance":
+                print(
+                    f"[barcode {processed_groups}] barcode={barcode} rows={len(grouped)} "
+                    f"title={source_title!r} search_type=n/a status={st}"
+                )
+            continue
+
+        search_type = detect_tmdb_search_type(source_title)
+        cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
+        if cache_key not in query_cache:
+            tmdb_match = search_tmdb_movie_safe(
+                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
+            )
+            query_cache[cache_key] = tmdb_match
+        else:
+            tmdb_match = query_cache[cache_key]
+
+        if tmdb_match:
+            det_key = f"{search_type}|{tmdb_match.get('id')}"
+            details_tuple = details_cache.get(det_key)
+            if not details_tuple:
+                details_tuple = fetch_tmdb_details_and_credits(
+                    tmdb_api_key, tmdb_api_url, int(tmdb_match["id"]), search_type
+                )
+                if details_tuple:
+                    details_cache[det_key] = details_tuple
+            if not details_tuple:
+                update_data = build_tmdb_update(rep, None, None, None, search_type)
+            else:
+                details, credits = details_tuple
+                update_data = build_tmdb_update(rep, tmdb_match, details, credits, search_type)
+        else:
+            update_data = build_tmdb_update(rep, None, None, None, search_type)
+
+        _apply_update([r["id"] for r in grouped], update_data)
+        processed_groups += 1
+        processed_rows += len(grouped)
+        if stats is not None:
+            stats.processed_barcode_groups += 1
+        _enrichment_bump_stats(stats, len(grouped), str(update_data.get("tmdb_match_status") or ""))
+        tid = update_data.get("tmdb_id")
+        st_out = update_data.get("tmdb_match_status")
+        if log_style == "recovery":
+            print(
+                f"[{processed_groups}] barcode={barcode} rows={len(grouped)} "
+                f"title='{source_title}' status={st_out}"
+            )
+        else:
+            print(
+                f"[barcode {processed_groups}] barcode={barcode} rows={len(grouped)} "
+                f"title={source_title!r} search_type={search_type} tmdb_id={tid!r} status={st_out}"
+            )
+        if not dry_run:
+            time.sleep(sleep_ms / 1000.0)
+
+    for idx, row in enumerate(no_barcode_rows, start=1):
+        source_title = clean_text(row.get("title")) or ""
+        source_year = extract_year(row.get("film_released"))
+        cleaned = normalize_match_title(source_title)
+        if not cleaned:
+            st = "no_clean_title"
+            upd = {"tmdb_match_status": st, "tmdb_last_refreshed_at": now_iso()}
+            _apply_update([row["id"]], upd)
+            _enrichment_bump_stats(stats, 1, st)
+            processed_rows += 1
+            if stats is not None:
+                stats.no_barcode_rows_processed += 1
+            if log_style == "maintenance":
+                print(
+                    f"[no-barcode {idx}/{len(no_barcode_rows)}] id={row.get('id')} "
+                    f"title={source_title!r} search_type=n/a status={st}"
+                )
+            continue
+
+        search_type = detect_tmdb_search_type(source_title)
+        cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
+        if cache_key not in query_cache:
+            tmdb_match = search_tmdb_movie_safe(
+                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
+            )
+            query_cache[cache_key] = tmdb_match
+        else:
+            tmdb_match = query_cache[cache_key]
+
+        if tmdb_match:
+            det_key = f"{search_type}|{tmdb_match.get('id')}"
+            details_tuple = details_cache.get(det_key)
+            if not details_tuple:
+                details_tuple = fetch_tmdb_details_and_credits(
+                    tmdb_api_key, tmdb_api_url, int(tmdb_match["id"]), search_type
+                )
+                if details_tuple:
+                    details_cache[det_key] = details_tuple
+            if not details_tuple:
+                update_data = build_tmdb_update(row, None, None, None, search_type)
+            else:
+                details, credits = details_tuple
+                update_data = build_tmdb_update(row, tmdb_match, details, credits, search_type)
+        else:
+            update_data = build_tmdb_update(row, None, None, None, search_type)
+
+        _apply_update([row["id"]], update_data)
+        processed_rows += 1
+        if stats is not None:
+            stats.no_barcode_rows_processed += 1
+        _enrichment_bump_stats(stats, 1, str(update_data.get("tmdb_match_status") or ""))
+        tid = update_data.get("tmdb_id")
+        st_out = update_data.get("tmdb_match_status")
+        if log_style == "recovery":
+            print(f"[no-barcode {idx}/{len(no_barcode_rows)}] title='{source_title}' status={st_out}")
+        else:
+            print(
+                f"[no-barcode {idx}/{len(no_barcode_rows)}] id={row.get('id')} "
+                f"title={source_title!r} search_type={search_type} tmdb_id={tid!r} status={st_out}"
+            )
+        if not dry_run:
+            time.sleep(sleep_ms / 1000.0)
+
+    if log_style == "recovery":
+        print(f"Done. Processed rows={processed_rows}, barcode_groups={processed_groups}")
+    else:
+        print(
+            f"Done. processed_rows={processed_rows} barcode_groups={processed_groups} dry_run={dry_run}"
+        )
 
 
 def group_rows_by_barcode(
@@ -262,129 +446,17 @@ def run_enrich(
         print("No catalog rows need enrichment.")
         return stats
 
-    barcode_groups, no_barcode_rows = group_rows_by_barcode(rows)
-
-    query_cache: Dict[str, Dict[str, Any] | None] = {}
-    details_cache: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]] = {}
-
-    processed_groups = 0
-    processed_rows = 0
-
-    for barcode, grouped in barcode_groups.items():
-        if processed_groups >= max_groups:
-            break
-        rep = grouped[0]
-        source_title = clean_text(rep.get("title")) or ""
-        source_year = extract_year(rep.get("film_released"))
-        cleaned = normalize_match_title(source_title)
-
-        if not cleaned:
-            st = "no_clean_title"
-            update_rows_by_ids(
-                supabase,
-                [r["id"] for r in grouped],
-                {"tmdb_match_status": st, "tmdb_last_refreshed_at": now_iso()},
-            )
-            _enrichment_bump_stats(stats, len(grouped), st)
-            processed_groups += 1
-            processed_rows += len(grouped)
-            if stats is not None:
-                stats.processed_barcode_groups += 1
-            continue
-
-        search_type = detect_tmdb_search_type(source_title)
-        cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
-        tmdb_match = query_cache.get(cache_key)
-        if cache_key not in query_cache:
-            tmdb_match = search_tmdb_movie_safe(
-                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
-            )
-            query_cache[cache_key] = tmdb_match
-
-        if tmdb_match:
-            det_key = f"{search_type}|{tmdb_match.get('id')}"
-            details_tuple = details_cache.get(det_key)
-            if not details_tuple:
-                details_tuple = fetch_tmdb_details_and_credits(
-                    tmdb_api_key, tmdb_api_url, int(tmdb_match["id"]), search_type
-                )
-                if details_tuple:
-                    details_cache[det_key] = details_tuple
-            if not details_tuple:
-                update_data = build_tmdb_update(rep, None, None, None, search_type)
-            else:
-                details, credits = details_tuple
-                update_data = build_tmdb_update(rep, tmdb_match, details, credits, search_type)
-        else:
-            update_data = build_tmdb_update(rep, None, None, None, search_type)
-
-        update_rows_by_ids(supabase, [r["id"] for r in grouped], update_data)
-        processed_groups += 1
-        processed_rows += len(grouped)
-        if stats is not None:
-            stats.processed_barcode_groups += 1
-        _enrichment_bump_stats(stats, len(grouped), str(update_data.get("tmdb_match_status") or ""))
-        print(
-            f"[{processed_groups}] barcode={barcode} rows={len(grouped)} title='{source_title}' "
-            f"status={update_data.get('tmdb_match_status')}"
-        )
-        time.sleep(sleep_ms / 1000.0)
-
-    for idx, row in enumerate(no_barcode_rows, start=1):
-        source_title = clean_text(row.get("title")) or ""
-        source_year = extract_year(row.get("film_released"))
-        cleaned = normalize_match_title(source_title)
-        if not cleaned:
-            st = "no_clean_title"
-            update_rows_by_ids(
-                supabase,
-                [row["id"]],
-                {"tmdb_match_status": st, "tmdb_last_refreshed_at": now_iso()},
-            )
-            _enrichment_bump_stats(stats, 1, st)
-            processed_rows += 1
-            if stats is not None:
-                stats.no_barcode_rows_processed += 1
-            continue
-
-        search_type = detect_tmdb_search_type(source_title)
-        cache_key = f"{search_type}|{cleaned}|{source_year or ''}"
-        tmdb_match = query_cache.get(cache_key)
-        if cache_key not in query_cache:
-            tmdb_match = search_tmdb_movie_safe(
-                source_title, tmdb_api_key, tmdb_api_url, source_year=source_year
-            )
-            query_cache[cache_key] = tmdb_match
-
-        if tmdb_match:
-            det_key = f"{search_type}|{tmdb_match.get('id')}"
-            details_tuple = details_cache.get(det_key)
-            if not details_tuple:
-                details_tuple = fetch_tmdb_details_and_credits(
-                    tmdb_api_key, tmdb_api_url, int(tmdb_match["id"]), search_type
-                )
-                if details_tuple:
-                    details_cache[det_key] = details_tuple
-            if not details_tuple:
-                update_data = build_tmdb_update(row, None, None, None, search_type)
-            else:
-                details, credits = details_tuple
-                update_data = build_tmdb_update(row, tmdb_match, details, credits, search_type)
-        else:
-            update_data = build_tmdb_update(row, None, None, None, search_type)
-
-        update_rows_by_ids(supabase, [row["id"]], update_data)
-        processed_rows += 1
-        if stats is not None:
-            stats.no_barcode_rows_processed += 1
-        _enrichment_bump_stats(stats, 1, str(update_data.get("tmdb_match_status") or ""))
-        print(
-            f"[no-barcode {idx}/{len(no_barcode_rows)}] title='{source_title}' "
-            f"status={update_data.get('tmdb_match_status')}"
-        )
-        time.sleep(sleep_ms / 1000.0)
-
-    print(f"Done. Processed rows={processed_rows}, barcode_groups={processed_groups}")
+    run_enrichment_for_rows(
+        supabase,
+        rows,
+        tmdb_api_key=tmdb_api_key,
+        tmdb_api_url=tmdb_api_url,
+        max_groups=max_groups,
+        sleep_ms=sleep_ms,
+        stats=stats,
+        dry_run=False,
+        log_style="recovery",
+    )
     return stats
 
 

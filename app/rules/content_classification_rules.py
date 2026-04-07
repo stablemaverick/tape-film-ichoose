@@ -70,7 +70,10 @@ _STRONG_TV_TITLE_PATTERNS = [
     ),
     re.compile(r"\bs\d{1,2}\s*e\d{1,2}\b", re.IGNORECASE),  # S01E02
     re.compile(r"\bminiseries\b|\bmini-series\b", re.IGNORECASE),
+    re.compile(r"\blimited\s+event\s+series\b", re.IGNORECASE),
     re.compile(r"\blimited\s+series\b", re.IGNORECASE),
+    re.compile(r"\bevent\s+series\b", re.IGNORECASE),
+    re.compile(r"\bcomplete\s+season\b", re.IGNORECASE),
     re.compile(r"\ball\s+episodes\b", re.IGNORECASE),
     re.compile(r"\bseries\s+\d+\b", re.IGNORECASE),  # “series 1”, “series 2”
     re.compile(r"\bthe\s+complete\s+\w+\s+season\b", re.IGNORECASE),

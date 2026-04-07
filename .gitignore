@@ -62,6 +62,10 @@ google-cloud-sdk/
 tests/tmdb_harness/output/
 tests/tmdb_harness/workstream_output/
 tests/tmdb_harness/film_bundle_harness_output/
+tests/tmdb_harness/catalog_sample_match_output/
+tests/agent_retrieval_harness/output/
+tests/agent_retrieval_harness/ranking_workstream_output/
+tests/agent_retrieval_harness/intent_harness_output/
 
 # Editors / misc
 .cursor/

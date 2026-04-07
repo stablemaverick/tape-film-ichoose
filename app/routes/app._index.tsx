@@ -1,4 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type IntentMode =
+  | "all"
+  | "new_releases"
+  | "film_title"
+  | "director"
+  | "label_studio"
+  | "in_stock"
+  | "preorders"
+  | "best_edition";
+
+const INTENT_MODE_CHIPS: Array<{ id: IntentMode; label: string; placeholder: string }> = [
+  { id: "all", label: "All", placeholder: "Search films, directors, labels, editions..." },
+  { id: "new_releases", label: "New Releases", placeholder: "Try: new releases this month or latest arrivals" },
+  { id: "film_title", label: "Film Title", placeholder: "Enter film title (optionally add year)" },
+  { id: "director", label: "Director", placeholder: "Search by director name" },
+  { id: "label_studio", label: "Label / Studio", placeholder: "Search by label/studio (e.g. Criterion)" },
+  { id: "in_stock", label: "In Stock", placeholder: "Find in-stock titles (optionally add title/director)" },
+  { id: "preorders", label: "Upcoming Releases", placeholder: "Find upcoming/future release titles" },
+  { id: "best_edition", label: "Best Edition", placeholder: "Best edition for [film title]" },
+];
+
+const BLANK_QUERY_ALLOWED_MODES = new Set<IntentMode>([
+  "new_releases",
+  "in_stock",
+  "preorders",
+]);
+
+function placeholderForMode(mode: IntentMode): string {
+  return INTENT_MODE_CHIPS.find((m) => m.id === mode)?.placeholder || INTENT_MODE_CHIPS[0].placeholder;
+}
 
 function getAvailabilityMeta(status: string | null | undefined, supplierStock?: number) {
   if (status === "store_stock") {
@@ -89,12 +120,18 @@ function AvailabilityBadge({
 function ResultCard({
   opt,
   onAdd,
+  onAddWishlist,
   creatingDraftId,
+  wishlistBusy,
+  emailReady,
   showReason = false,
 }: {
   opt: any;
   onAdd: (opt: any) => void;
+  onAddWishlist?: (opt: any) => void;
   creatingDraftId: string | null;
+  wishlistBusy?: boolean;
+  emailReady?: boolean;
   showReason?: boolean;
 }) {
   return (
@@ -149,13 +186,27 @@ function ResultCard({
         </div>
       )}
 
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
         <button
           onClick={() => onAdd(opt)}
           disabled={creatingDraftId === opt.id}
         >
           {creatingDraftId === opt.id ? "Creating..." : "Add to Draft Order"}
         </button>
+        {onAddWishlist && (
+          <button
+            type="button"
+            onClick={() => onAddWishlist(opt)}
+            disabled={!emailReady || wishlistBusy}
+            title={
+              emailReady
+                ? "Save to customer wishlist"
+                : "Enter customer email first"
+            }
+          >
+            {wishlistBusy ? "Adding…" : "Add to Wishlist"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -163,14 +214,119 @@ function ResultCard({
 
 export default function Index() {
   const [message, setMessage] = useState("");
+  const [intentMode, setIntentMode] = useState<IntentMode>("all");
   const [response, setResponse] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [draftResult, setDraftResult] = useState<any>(null);
   const [creatingDraftId, setCreatingDraftId] = useState<string | null>(null);
+  const [wishlistItems, setWishlistItems] = useState<any[]>([]);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [wishlistBusyId, setWishlistBusyId] = useState<string | null>(null);
+  const [removingWishlistId, setRemovingWishlistId] = useState<string | null>(
+    null,
+  );
+
+  const emailReady = Boolean(email.trim());
+
+  useEffect(() => {
+    async function loadWishlist() {
+      if (!email.trim()) {
+        setWishlistItems([]);
+        return;
+      }
+      setWishlistLoading(true);
+      try {
+        const res = await fetch(
+          `/api/wishlist?email=${encodeURIComponent(email.trim())}`,
+        );
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.items)) {
+          setWishlistItems(data.items);
+        } else {
+          setWishlistItems([]);
+        }
+      } catch {
+        setWishlistItems([]);
+      } finally {
+        setWishlistLoading(false);
+      }
+    }
+    void loadWishlist();
+  }, [email]);
+
+  async function addToWishlist(opt: any) {
+    if (!email.trim()) {
+      alert("Please enter a customer email first.");
+      return;
+    }
+    const catalogItemId = opt.catalogItemId ?? opt.id;
+    if (!catalogItemId) {
+      alert("This result has no catalog id — cannot add to wishlist.");
+      return;
+    }
+    const titleSnapshot =
+      [opt.filmTitle, opt.title].filter(Boolean).join(" — ").trim() ||
+      String(opt.title || opt.filmTitle || "Wishlist item").trim();
+    setWishlistBusyId(String(opt.id ?? catalogItemId));
+    try {
+      const res = await fetch("/api/wishlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          catalogItemId: String(catalogItemId),
+          filmId: opt.filmId ?? null,
+          shopifyVariantId: opt.shopifyVariantId ?? null,
+          title: titleSnapshot,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Could not add to wishlist");
+        return;
+      }
+      const listRes = await fetch(
+        `/api/wishlist?email=${encodeURIComponent(email.trim())}`,
+      );
+      const listData = await listRes.json();
+      if (listData.ok && Array.isArray(listData.items)) {
+        setWishlistItems(listData.items);
+      }
+    } finally {
+      setWishlistBusyId(null);
+    }
+  }
+
+  async function removeWishlistItem(wishlistItemId: string) {
+    if (!email.trim()) return;
+    setRemovingWishlistId(wishlistItemId);
+    try {
+      const res = await fetch("/api/wishlist", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          wishlistItemId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Could not remove");
+        return;
+      }
+      setWishlistItems((prev) => prev.filter((w) => w.id !== wishlistItemId));
+    } finally {
+      setRemovingWishlistId(null);
+    }
+  }
 
   async function sendMessage() {
-    if (!message.trim()) return;
+    const trimmed = message.trim();
+    const canSubmitBlank = BLANK_QUERY_ALLOWED_MODES.has(intentMode);
+    if (!trimmed && !canSubmitBlank) {
+      return;
+    }
 
     setLoading(true);
     setDraftResult(null);
@@ -180,7 +336,7 @@ export default function Index() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, intentMode }),
     });
 
     const data = await res.json();
@@ -251,12 +407,119 @@ export default function Index() {
         />
       </div>
 
+      {emailReady && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            background: "#fafafa",
+          }}
+        >
+          <strong>Wishlist (this email)</strong>
+          {wishlistLoading && (
+            <div style={{ marginTop: 8, color: "#6b7280" }}>Loading…</div>
+          )}
+          {!wishlistLoading && wishlistItems.length === 0 && (
+            <div style={{ marginTop: 8, color: "#6b7280" }}>
+              No saved items yet.
+            </div>
+          )}
+          {!wishlistLoading &&
+            wishlistItems.map((w: any) => {
+              const c = w.commercial;
+              const release =
+                c?.mediaReleaseDate || c?.filmReleased || null;
+              return (
+                <div
+                  key={w.id}
+                  style={{
+                    marginTop: 12,
+                    paddingBottom: 12,
+                    borderBottom: "1px solid #e5e7eb",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {c?.displayTitle || w.title_snapshot}
+                    </div>
+                    {c?.priceLabel != null && (
+                      <div style={{ marginTop: 4, color: "#111827" }}>
+                        {c.priceLabel}
+                        {c.currency && c.currency !== "GBP" ? ` (${c.currency})` : null}
+                      </div>
+                    )}
+                    {c?.catalogFound && c?.priceLabel == null && (
+                      <div style={{ marginTop: 4, color: "#6b7280", fontSize: 13 }}>
+                        Price not set
+                      </div>
+                    )}
+                    <div style={{ marginTop: 4, color: "#374151", fontSize: 14 }}>
+                      {c?.availabilityLabel || "—"}
+                    </div>
+                    <div style={{ marginTop: 2, color: "#6b7280", fontSize: 13 }}>
+                      {c?.sourceChannel || "—"}
+                      {c?.format ? ` · ${c.format}` : ""}
+                      {c?.availabilityStatus
+                        ? ` · ${c.availabilityStatus}`
+                        : ""}
+                    </div>
+                    {release ? (
+                      <div style={{ marginTop: 2, color: "#6b7280", fontSize: 13 }}>
+                        {c?.mediaReleaseDate
+                          ? `Media release: ${c.mediaReleaseDate}`
+                          : `Film release: ${c.filmReleased}`}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={removingWishlistId === w.id}
+                    onClick={() => removeWishlistItem(w.id)}
+                  >
+                    {removingWishlistId === w.id ? "Removing…" : "Remove"}
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
       <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {INTENT_MODE_CHIPS.map((mode) => {
+            const active = intentMode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setIntentMode(mode.id)}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: 999,
+                  border: active ? "1px solid #2563eb" : "1px solid #d1d5db",
+                  background: active ? "#eff6ff" : "#fff",
+                  color: active ? "#1d4ed8" : "#374151",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {mode.label}
+              </button>
+            );
+          })}
+        </div>
         <input
           style={{ width: 400, padding: 10 }}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Search for a film..."
+          placeholder={placeholderForMode(intentMode)}
         />
 
         <button
@@ -280,6 +543,11 @@ export default function Index() {
           {response.wishlistPrompt && (
             <p style={{ marginTop: 8, color: "#6b7280" }}>{response.wishlistPrompt}</p>
           )}
+          {response.wishlistSuggested && !emailReady && (
+            <p style={{ marginTop: 6, color: "#9ca3af", fontSize: 13 }}>
+              Enter customer email above to save items to wishlist.
+            </p>
+          )}
 
           {response.recommendedOption && (
             <div style={{ marginBottom: 28 }}>
@@ -287,7 +555,12 @@ export default function Index() {
               <ResultCard
                 opt={response.recommendedOption}
                 onAdd={addToDraftOrder}
+                onAddWishlist={addToWishlist}
                 creatingDraftId={creatingDraftId}
+                wishlistBusy={
+                  wishlistBusyId === String(response.recommendedOption?.id)
+                }
+                emailReady={emailReady}
                 showReason
               />
             </div>
@@ -301,7 +574,10 @@ export default function Index() {
                   key={opt.id}
                   opt={opt}
                   onAdd={addToDraftOrder}
+                  onAddWishlist={addToWishlist}
                   creatingDraftId={creatingDraftId}
+                  wishlistBusy={wishlistBusyId === String(opt.id)}
+                  emailReady={emailReady}
                 />
               ))}
             </div>
@@ -315,7 +591,10 @@ export default function Index() {
                   key={opt.id}
                   opt={opt}
                   onAdd={addToDraftOrder}
+                  onAddWishlist={addToWishlist}
                   creatingDraftId={creatingDraftId}
+                  wishlistBusy={wishlistBusyId === String(opt.id)}
+                  emailReady={emailReady}
                 />
               ))}
             </div>

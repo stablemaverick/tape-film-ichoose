@@ -51,6 +51,46 @@ describe("getOfferRankingBucket", () => {
       "supplier_in_stock",
     );
   });
+
+  test("future non-ISO media_release_date (dd/mm/yyyy) is preorder", () => {
+    const far = new Date();
+    far.setFullYear(far.getFullYear() + 1);
+    const dd = String(far.getDate()).padStart(2, "0");
+    const mm = String(far.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(far.getFullYear());
+    const dmy = `${dd}/${mm}/${yyyy}`;
+
+    assert.equal(
+      getOfferRankingBucket({
+        media_release_date: dmy,
+        availability_status: "supplier_out",
+        supplier_stock_status: 0,
+      }),
+      "preorder",
+    );
+  });
+
+  test("past/current supplier availability remains available-to-order bucket", () => {
+    assert.equal(
+      getOfferRankingBucket({
+        media_release_date: "2023-05-01",
+        availability_status: "supplier_stock",
+        supplier_stock_status: 4,
+      }),
+      "supplier_in_stock",
+    );
+  });
+
+  test("no stock and no future release date stays out_of_stock", () => {
+    assert.equal(
+      getOfferRankingBucket({
+        media_release_date: "2020-01-01",
+        availability_status: "supplier_out",
+        supplier_stock_status: 0,
+      }),
+      "out_of_stock",
+    );
+  });
 });
 
 describe("sortFilmsWithOffersFinal", () => {

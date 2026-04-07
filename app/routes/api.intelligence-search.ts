@@ -790,6 +790,7 @@ export async function runIntelligenceSearch(
     }
 
     let films: FilmRow[] = filmData || [];
+    const candidateBeforeStudioLike = films.length;
 
     const debugIntel = process.env.TAPE_AGENT_DEBUG === "1";
     if (debugIntel) {
@@ -806,8 +807,12 @@ export async function runIntelligenceSearch(
           franchiseParam,
           searchTerm,
           studioBrowseMode,
+          latestBrowseMode,
           recentReleasedBrowseMode,
           genreYearBrowseMode,
+          requestedStudio,
+          latestQuery,
+          recentReleasedParam,
           candidateFilmsBeforeFacetFilter: films.length,
         }),
       );
@@ -840,6 +845,14 @@ export async function runIntelligenceSearch(
     }
 
     const scoreTerm = searchTerm;
+    const preOfferFilmLimit =
+      (studioBrowseMode && latestQuery) || recentReleasedParam
+        ? 500
+        : studioBrowseMode || latestBrowseMode
+          ? 80
+          : genreYearBrowseMode
+            ? 25
+            : 5;
     let sortedFilms: FilmRowScored[] = [...films]
       .map((film) => ({
         ...film,
@@ -849,7 +862,7 @@ export async function runIntelligenceSearch(
             : scoreFilmMatch(film, scoreTerm),
       }))
       .sort((a, b) => b._score - a._score)
-      .slice(0, studioBrowseMode || latestBrowseMode ? 80 : genreYearBrowseMode ? 25 : 5);
+      .slice(0, preOfferFilmLimit);
 
     if (!(studioBrowseMode || genreYearBrowseMode || latestBrowseMode)) {
       sortedFilms = filterLooseSuperstringFilmsWhenExactTitleExists(
@@ -1018,6 +1031,8 @@ export async function runIntelligenceSearch(
       })
       .filter((item) => item.offers.length > 0);
 
+    const countAfterDateFilter = filmsWithOffers.length;
+
     if (recentReleasedParam) {
       filmsWithOffers = [...filmsWithOffers].sort((a, b) => {
         const ad = releaseDateValue(a.bestOffer?.media_release_date);
@@ -1030,6 +1045,28 @@ export async function runIntelligenceSearch(
       commercialRecencyFirst: studioBrowseMode || latestBrowseMode,
       preferAvailableNow: studioBrowseMode && !latestQuery,
     });
+    }
+
+    const finalFilmLimit = studioBrowseMode || latestBrowseMode ? 80 : genreYearBrowseMode ? 25 : 5;
+    filmsWithOffers = filmsWithOffers.slice(0, finalFilmLimit);
+
+    if (debugIntel) {
+      console.log(
+        "[intelligence-search] counts",
+        JSON.stringify({
+          mode: {
+            studioBrowseMode,
+            latestBrowseMode,
+            recentReleasedBrowseMode,
+            genreYearBrowseMode,
+          },
+          candidateBeforeStudioLike,
+          candidateAfterFacetFilter: films.length,
+          candidateAfterFilmRankPreTrim: sortedFilms.length,
+          candidateAfterOfferDateFilter: countAfterDateFilter,
+          finalResultCount: filmsWithOffers.length,
+        }),
+      );
     }
 
     return Response.json({
