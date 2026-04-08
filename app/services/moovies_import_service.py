@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import os
 import sys
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -19,6 +20,10 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 from app.helpers.text_helpers import chunked, lower_keys, normalize_key, pick
+
+_MAX_RAW_UPSERT_CHUNK = 1000
+_DEFAULT_RAW_UPSERT_CHUNK = 500
+_RAW_UPSERT_RETRY_BACKOFF_S = 1.0
 
 
 def load_moovies_file(filepath: str) -> pd.DataFrame:
@@ -132,12 +137,114 @@ def compute_upsert_key(supplier: str, raw_barcode: str, raw_sku: str, row_number
     return f"row:{row_number}"
 
 
+def _resolve_raw_upsert_chunk_size(cli_chunk_size: Optional[int] = None) -> int:
+    if cli_chunk_size is not None:
+        return max(1, min(int(cli_chunk_size), _MAX_RAW_UPSERT_CHUNK))
+    env_value = os.getenv("MOOVIES_RAW_UPSERT_CHUNK_SIZE") or os.getenv("RAW_UPSERT_CHUNK_SIZE")
+    if env_value:
+        try:
+            return max(1, min(int(env_value), _MAX_RAW_UPSERT_CHUNK))
+        except Exception:
+            pass
+    return _DEFAULT_RAW_UPSERT_CHUNK
+
+
+def _is_timeout_like_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "timeout" in msg or "57014" in msg or "statement timeout" in msg
+
+
+def _format_raw_upsert_error(
+    exc: Exception,
+    *,
+    supplier: str,
+    table: str,
+    chunk_index: int,
+    chunk_total: int,
+    rows_in_chunk: int,
+    attempt: int,
+    elapsed_ms: float,
+) -> str:
+    hint = ""
+    if _is_timeout_like_error(exc):
+        hint = (
+            " (likely DB statement timeout — try smaller "
+            "MOOVIES_RAW_UPSERT_CHUNK_SIZE or RAW_UPSERT_CHUNK_SIZE)"
+        )
+    return (
+        f"moovies raw upsert failed: supplier={supplier!r} table={table!r} "
+        f"chunk={chunk_index}/{chunk_total} rows_in_chunk={rows_in_chunk} "
+        f"attempt={attempt} elapsed_ms={elapsed_ms:.0f}{hint} | error={exc!s}"
+    )
+
+
+def _upsert_raw_rows_in_chunks(
+    supabase: Any,
+    table: str,
+    rows: list[Dict[str, Any]],
+    *,
+    supplier: str,
+    chunk_size: int,
+) -> None:
+    if not rows:
+        return
+
+    size = max(1, min(int(chunk_size), _MAX_RAW_UPSERT_CHUNK))
+    total = len(rows)
+    n_chunks = (total + size - 1) // size
+    on_conflict = "supplier,upsert_key"
+
+    for i, batch in enumerate(chunked(rows, size), start=1):
+        last_exc: Optional[Exception] = None
+        last_elapsed_ms = 0.0
+        for attempt in (1, 2):
+            t0 = time.perf_counter()
+            try:
+                supabase.table(table).upsert(batch, on_conflict=on_conflict).execute()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                print(
+                    f"[moovies-import] raw upsert chunk={i}/{n_chunks} rows={len(batch)} "
+                    f"elapsed_ms={elapsed_ms:.0f} table={table!r} on_conflict={on_conflict}"
+                )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                last_elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                detail = _format_raw_upsert_error(
+                    exc,
+                    supplier=supplier,
+                    table=table,
+                    chunk_index=i,
+                    chunk_total=n_chunks,
+                    rows_in_chunk=len(batch),
+                    attempt=attempt,
+                    elapsed_ms=last_elapsed_ms,
+                )
+                print(detail, file=sys.stderr)
+                if attempt == 1:
+                    time.sleep(_RAW_UPSERT_RETRY_BACKOFF_S)
+        if last_exc is not None:
+            detail = _format_raw_upsert_error(
+                last_exc,
+                supplier=supplier,
+                table=table,
+                chunk_index=i,
+                chunk_total=n_chunks,
+                rows_in_chunk=len(batch),
+                attempt=2,
+                elapsed_ms=last_elapsed_ms,
+            )
+            raise RuntimeError(detail) from last_exc
+
+
 def import_raw(
     filepath: str,
     table: str = "staging_moovies_raw",
     mode: str = "full",
     existing_only_in_raw: bool = False,
     limit: Optional[int] = None,
+    raw_upsert_chunk_size: Optional[int] = None,
     *,
     env_file: str = ".env",
 ) -> str:
@@ -238,8 +345,14 @@ def import_raw(
             }
         )
 
-    for batch in chunked(rows, 1000):
-        supabase.table(table).upsert(batch, on_conflict="supplier,upsert_key").execute()
+    chunk_size = _resolve_raw_upsert_chunk_size(raw_upsert_chunk_size)
+    _upsert_raw_rows_in_chunks(
+        supabase,
+        table,
+        rows,
+        supplier="moovies",
+        chunk_size=chunk_size,
+    )
 
     print(
         f"Imported {len(rows)} Moovies raw rows. "
@@ -270,6 +383,16 @@ def run_from_argv(argv: Optional[list[str]] = None) -> int:
         metavar="N",
         help="Import at most N data rows from the file (after filters; useful for dry runs).",
     )
+    parser.add_argument(
+        "--raw-upsert-chunk-size",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Rows per raw upsert chunk (default from MOOVIES_RAW_UPSERT_CHUNK_SIZE, "
+            "then RAW_UPSERT_CHUNK_SIZE, else 500)."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         import_raw(
@@ -277,6 +400,7 @@ def run_from_argv(argv: Optional[list[str]] = None) -> int:
             mode=args.mode,
             existing_only_in_raw=args.existing_only_in_raw,
             limit=args.limit,
+            raw_upsert_chunk_size=args.raw_upsert_chunk_size,
         )
     except SystemExit as e:
         code = e.code
