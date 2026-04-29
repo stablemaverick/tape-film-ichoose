@@ -79,6 +79,55 @@ def fetch_known_barcodes(supabase, supplier_names: list[str], page_size: int = 1
     return out
 
 
+def fetch_lasgo_identity_barcodes(supabase, page_size: int = 1000) -> set[str]:
+    """
+    Build the current Lasgo identity set from normalized/current tables.
+    Avoid scanning full historical staging_lasgo_raw in stock_cost mode.
+    """
+    out: set[str] = set()
+    suppliers = ["lasgo", "Lasgo"]
+    sources = (
+        ("catalog_items", "active catalog"),
+        ("staging_supplier_offers", "normalized raw identity"),
+    )
+
+    for table, label in sources:
+        for supplier in suppliers:
+            offset = 0
+            pages = 0
+            while True:
+                q = (
+                    supabase.table(table)
+                    .select("barcode")
+                    .eq("supplier", supplier)
+                    .not_.is_("barcode", "null")
+                    .range(offset, offset + page_size - 1)
+                )
+                if table == "catalog_items":
+                    q = q.eq("active", True)
+                if table == "staging_supplier_offers":
+                    q = q.eq("source_type", "catalog")
+
+                resp = q.execute()
+                page = resp.data or []
+                if not page:
+                    break
+                for r in page:
+                    bc = (r.get("barcode") or "").strip()
+                    if bc:
+                        out.add(bc)
+                pages += 1
+                if pages == 1 or pages % 10 == 0:
+                    print(
+                        f"[lasgo-import] identity scan table={table!r} source={label} supplier={supplier!r} "
+                        f"page={pages} fetched_rows={len(page)} unique_barcodes={len(out)}"
+                    )
+                if len(page) < page_size:
+                    break
+                offset += page_size
+    return out
+
+
 def is_blu_ray_format(value: str) -> bool:
     v = (value or "").strip().lower()
     if not v:
@@ -139,8 +188,11 @@ def import_lasgo_raw(
     existing_barcodes: set[str] = set()
     known_barcodes: set[str] = set()
     if mode == "stock_cost" and existing_only_in_raw:
-        existing_barcodes = fetch_existing_lasgo_barcodes(supabase, table)
-        known_barcodes = fetch_known_barcodes(supabase, ["lasgo", "Lasgo"])
+        # Use current identity sources (catalog + normalized supplier offers)
+        # instead of scanning the full historical raw staging table.
+        identity_barcodes = fetch_lasgo_identity_barcodes(supabase)
+        existing_barcodes = identity_barcodes
+        known_barcodes = identity_barcodes
 
     for file_path in iter_input_files(path_or_dir):
         if not file_path.exists():
