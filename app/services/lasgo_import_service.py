@@ -24,10 +24,12 @@ from app.helpers.text_helpers import chunked, lower_keys, pick
 def fetch_existing_lasgo_barcodes(supabase, table: str, page_size: int = 1000) -> set[str]:
     out: set[str] = set()
     offset = 0
+    pages = 0
     while True:
         resp = (
             supabase.table(table)
             .select("raw_ean")
+            .not_.is_("raw_ean", "null")
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -38,6 +40,12 @@ def fetch_existing_lasgo_barcodes(supabase, table: str, page_size: int = 1000) -
             bc = (r.get("raw_ean") or "").strip()
             if bc:
                 out.add(bc)
+        pages += 1
+        if pages == 1 or pages % 10 == 0:
+            print(
+                f"[lasgo-import] fetched existing barcodes table={table!r} "
+                f"page={pages} fetched_rows={len(page)} unique_barcodes={len(out)}"
+            )
         if len(page) < page_size:
             break
         offset += page_size
