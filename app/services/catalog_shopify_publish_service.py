@@ -48,6 +48,32 @@ class PublishedChannelInfo(TypedDict):
     catalog_title: str
 
 
+class VariantInventoryLevelSnapshot(TypedDict, total=False):
+    location_id: Optional[str]
+    location_name: Optional[str]
+    available: Optional[int]
+    committed: Optional[int]
+    on_hand: Optional[int]
+    unavailable: Optional[int]
+
+
+class VariantInventorySnapshot(TypedDict, total=False):
+    product_id: Optional[str]
+    variant_id: Optional[str]
+    inventory_item_id: Optional[str]
+    inventory_policy: Optional[str]
+    tracked: Optional[bool]
+    requires_shipping: Optional[bool]
+    configured_location_id: Optional[str]
+    primary_location_id: Optional[str]
+    primary_location_name: Optional[str]
+    available: Optional[int]
+    committed: Optional[int]
+    on_hand: Optional[int]
+    unavailable: Optional[int]
+    levels: List[VariantInventoryLevelSnapshot]
+
+
 class CatalogBarcodePublishResult(TypedDict, total=False):
     barcode: str
     outcome: CatalogPublishOutcome
@@ -59,6 +85,7 @@ class CatalogBarcodePublishResult(TypedDict, total=False):
     handle_collision_avoided: bool
     inventory_policy: Optional[str]
     preorder: bool
+    inventory_snapshot: VariantInventorySnapshot
     shopify_product_id: Optional[str]
     shopify_variant_id: Optional[str]
     existing_shopify_product_id: Optional[str]
@@ -745,6 +772,132 @@ def variant_inventory_policy_for_row(row: Dict[str, Any]) -> str:
     return "CONTINUE" if is_preorder(row) else "DENY"
 
 
+def shopify_inventory_location_id() -> Optional[str]:
+    """Tape fulfilment location GID (``SHOPIFY_INVENTORY_LOCATION_ID``)."""
+    return clean_text(os.getenv("SHOPIFY_INVENTORY_LOCATION_ID")) or None
+
+
+def initial_variant_inventory_quantities(
+    location_id: str,
+    *,
+    available: int = 0,
+) -> List[Dict[str, Any]]:
+    """
+    Explicit ``available`` at a location during ``productSet`` create.
+
+    Without this, tracked variants may not get an active inventory level at the
+    fulfilment location; first orders can show committed/on_hand without a negative
+    ``available`` even when ``inventoryPolicy`` is CONTINUE.
+    """
+    return [{"locationId": location_id, "name": "available", "quantity": available}]
+
+
+VARIANT_INVENTORY_SNAPSHOT_QUERY = """
+query VariantInventorySnapshot($variantId: ID!) {
+  productVariant(id: $variantId) {
+    id
+    inventoryPolicy
+    inventoryItem {
+      id
+      tracked
+      requiresShipping
+      inventoryLevels(first: 20) {
+        nodes {
+          id
+          location {
+            id
+            name
+          }
+          quantities(names: ["available", "committed", "on_hand", "unavailable"]) {
+            name
+            quantity
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def _quantities_map(level_node: Dict[str, Any]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for q in level_node.get("quantities") or []:
+        name = clean_text(q.get("name"))
+        if name:
+            out[name] = int(q.get("quantity") or 0)
+    return out
+
+
+def fetch_variant_inventory_snapshot(
+    client: ShopifyClient,
+    *,
+    product_id: str,
+    variant_id: str,
+    configured_location_id: Optional[str] = None,
+) -> VariantInventorySnapshot:
+    """Re-read variant + inventory levels from Shopify after publish."""
+    data = client.graphql(VARIANT_INVENTORY_SNAPSHOT_QUERY, {"variantId": variant_id})
+    variant = data.get("productVariant") or {}
+    inv_item = variant.get("inventoryItem") or {}
+    levels_out: List[VariantInventoryLevelSnapshot] = []
+    for lvl in (inv_item.get("inventoryLevels") or {}).get("nodes") or []:
+        loc = lvl.get("location") or {}
+        qty = _quantities_map(lvl)
+        levels_out.append(
+            {
+                "location_id": loc.get("id"),
+                "location_name": loc.get("name"),
+                "available": qty.get("available"),
+                "committed": qty.get("committed"),
+                "on_hand": qty.get("on_hand"),
+                "unavailable": qty.get("unavailable"),
+            }
+        )
+
+    primary = next(
+        (lv for lv in levels_out if lv.get("location_id") == configured_location_id),
+        levels_out[0] if levels_out else None,
+    )
+    snapshot: VariantInventorySnapshot = {
+        "product_id": product_id,
+        "variant_id": variant.get("id") or variant_id,
+        "inventory_item_id": inv_item.get("id"),
+        "inventory_policy": clean_text(variant.get("inventoryPolicy")),
+        "tracked": inv_item.get("tracked"),
+        "requires_shipping": inv_item.get("requiresShipping"),
+        "configured_location_id": configured_location_id,
+        "levels": levels_out,
+    }
+    if primary:
+        snapshot["primary_location_id"] = primary.get("location_id")
+        snapshot["primary_location_name"] = primary.get("location_name")
+        snapshot["available"] = primary.get("available")
+        snapshot["committed"] = primary.get("committed")
+        snapshot["on_hand"] = primary.get("on_hand")
+        snapshot["unavailable"] = primary.get("unavailable")
+    return snapshot
+
+
+def format_variant_inventory_snapshot_line(
+    *,
+    barcode: str,
+    snapshot: VariantInventorySnapshot,
+) -> str:
+    loc = snapshot.get("configured_location_id") or "n/a"
+    loc_name = snapshot.get("primary_location_name") or "n/a"
+    return (
+        f"[inventory-snapshot] barcode={barcode} "
+        f"product_id={snapshot.get('product_id')} variant_id={snapshot.get('variant_id')} "
+        f"inventory_item_id={snapshot.get('inventory_item_id')} "
+        f"inventory_policy={snapshot.get('inventory_policy')} "
+        f"tracked={snapshot.get('tracked')} requires_shipping={snapshot.get('requires_shipping')} "
+        f"location_id={loc} location_name={loc_name!r} "
+        f"available={snapshot.get('available')} committed={snapshot.get('committed')} "
+        f"on_hand={snapshot.get('on_hand')} unavailable={snapshot.get('unavailable')}"
+    )
+
+
 def _product_set_create(
     client: ShopifyClient,
     *,
@@ -805,6 +958,15 @@ def _product_set_create(
     }
     if cost is not None:
         variant_input["inventoryItem"]["cost"] = cost
+
+    location_id = shopify_inventory_location_id()
+    if location_id:
+        variant_input["inventoryQuantities"] = initial_variant_inventory_quantities(location_id)
+    else:
+        print(
+            "WARN: SHOPIFY_INVENTORY_LOCATION_ID unset — productSet will not seed "
+            "'available' at a location; inventory may not match manually created products."
+        )
 
     product_input: Dict[str, Any] = {
         "title": title,
@@ -1010,6 +1172,18 @@ def run_catalog_shopify_publish(
                 )
             )
 
+            inventory_snapshot: VariantInventorySnapshot = {}
+            try:
+                inventory_snapshot = fetch_variant_inventory_snapshot(
+                    shopify,
+                    product_id=product_id,
+                    variant_id=variant_id,
+                    configured_location_id=shopify_inventory_location_id(),
+                )
+                print(format_variant_inventory_snapshot_line(barcode=barcode, snapshot=inventory_snapshot))
+            except Exception as inv_exc:
+                print(f"WARN: inventory snapshot failed barcode={barcode}: {inv_exc}")
+
             results.append(
                 {
                     "barcode": barcode,
@@ -1024,6 +1198,7 @@ def run_catalog_shopify_publish(
                     "handle_collision_avoided": avoided,
                     "inventory_policy": inv_policy,
                     "preorder": preorder,
+                    "inventory_snapshot": inventory_snapshot,
                     "shopify_product_id": product_id,
                     "shopify_variant_id": variant_id,
                     "writeback_ok": writeback_err is None,

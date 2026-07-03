@@ -332,6 +332,9 @@ def create_product_graphql(
 
 
 def main() -> None:
+    import sys
+    from pathlib import Path
+
     parser = argparse.ArgumentParser(
         description="Publish selected barcodes from catalog_items to Shopify as draft products."
     )
@@ -360,78 +363,77 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    load_dotenv(args.env)
-    barcodes = parse_barcodes(args)
+    repo = Path(__file__).resolve().parents[2]
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+
+    from app.services.catalog_shopify_publish_service import (
+        normalize_barcodes,
+        run_catalog_shopify_publish,
+    )
+
+    raw: list[str] = []
+    if args.barcodes:
+        raw.extend([b.strip() for b in args.barcodes.split(",") if b.strip()])
+    if args.barcodes_file:
+        with open(args.barcodes_file, "r", encoding="utf-8") as f:
+            raw.extend(line.strip() for line in f if line.strip())
+    barcodes = normalize_barcodes(raw)
     if not barcodes:
         die("Provide --barcodes and/or --barcodes-file")
 
-    shop = os.getenv("SHOPIFY_SHOP")
-    client_id = os.getenv("SHOPIFY_CLIENT_ID")
-    client_secret = os.getenv("SHOPIFY_CLIENT_SECRET")
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-    if not shop:
-        die("Missing SHOPIFY_SHOP in .env")
-    if not client_id:
-        die("Missing SHOPIFY_CLIENT_ID in .env")
-    if not client_secret:
-        die("Missing SHOPIFY_CLIENT_SECRET in .env")
-    if not supabase_url or not supabase_key:
-        die("Missing SUPABASE_URL/SUPABASE_SERVICE_KEY in .env")
+    result = run_catalog_shopify_publish(
+        barcodes=barcodes,
+        supplier_mode=args.supplier,
+        shopify_status=args.status,
+        dry_run=args.dry_run,
+        env_file=args.env,
+        api_version=args.api_version,
+    )
 
-    access_token = get_admin_access_token(shop, client_id, client_secret)
-    graphql_url = f"https://{shop}/admin/api/{args.api_version}/graphql.json"
-    supabase = create_client(supabase_url, supabase_key)
-
-    catalog_rows_by_barcode = fetch_catalog_rows_for_barcodes(supabase, barcodes)
-
-    created = 0
-    skipped_exists = 0
-    skipped_no_catalog = 0
-    failed = 0
-
-    for barcode in barcodes:
-        existing_variant = variant_exists_by_barcode(graphql_url, access_token, barcode)
-        if existing_variant:
+    created = skipped_exists = skipped_no_catalog = failed = dry_run = 0
+    for row in result["results"]:
+        outcome = row.get("outcome")
+        barcode = row.get("barcode", "")
+        if outcome == "skipped_exists_shopify":
             skipped_exists += 1
-            product = (existing_variant.get("product") or {})
-            print(f"SKIP exists barcode={barcode} product={product.get('title')} variant={existing_variant.get('id')}")
-            continue
-
-        best = pick_best_row(catalog_rows_by_barcode.get(barcode) or [], supplier_preference=args.supplier)
-        if not best:
+            print(
+                f"SKIP exists barcode={barcode} "
+                f"product={row.get('existing_shopify_product_id')} "
+                f"variant={row.get('existing_shopify_variant_id')}"
+            )
+        elif outcome == "skipped_no_catalog":
             skipped_no_catalog += 1
             print(f"SKIP no_catalog barcode={barcode} supplier_mode={args.supplier}")
-            continue
-
-        if args.dry_run:
-            preorder = is_preorder(best)
+        elif outcome == "dry_run":
+            dry_run += 1
             print(
-                f"DRY-RUN create barcode={barcode} title={best.get('title')} "
-                f"price={best.get('calculated_sale_price')} cost={best.get('cost_price')} "
-                f"format={best.get('format')} preorder={preorder}"
+                f"DRY-RUN create barcode={barcode} title={row.get('title')} "
+                f"inventory_policy={row.get('inventory_policy')} preorder={row.get('preorder')} "
+                f"handle={row.get('handle')}"
             )
-            continue
-
-        try:
-            product = create_product_graphql(
-                graphql_url=graphql_url,
-                access_token=access_token,
-                barcode=barcode,
-                row=best,
-                status=args.status,
-            )
+        elif outcome == "created":
             created += 1
-            variant_nodes = (product.get("variants") or {}).get("nodes") or []
-            variant_id = variant_nodes[0].get("id") if variant_nodes else None
-            print(f"CREATED barcode={barcode} product_id={product.get('id')} variant_id={variant_id} title={product.get('title')}")
-        except Exception as e:
+            snap = row.get("inventory_snapshot") or {}
+            print(
+                f"CREATED barcode={barcode} product_id={row.get('shopify_product_id')} "
+                f"variant_id={row.get('shopify_variant_id')} title={row.get('title')} "
+                f"inventory_policy={row.get('inventory_policy')}"
+            )
+            if snap:
+                print(
+                    f"  inventory_item_id={snap.get('inventory_item_id')} tracked={snap.get('tracked')} "
+                    f"location={snap.get('primary_location_name')!r} "
+                    f"available={snap.get('available')} committed={snap.get('committed')} "
+                    f"on_hand={snap.get('on_hand')} unavailable={snap.get('unavailable')}"
+                )
+        elif outcome == "failed":
             failed += 1
-            print(f"ERROR barcode={barcode}: {e}")
+            print(f"ERROR barcode={barcode}: {row.get('message')}")
 
     print(
-        f"\nDone. input={len(barcodes)} created={created} skipped_exists={skipped_exists} "
-        f"skipped_no_catalog={skipped_no_catalog} failed={failed}"
+        f"\nDone. input={len(barcodes)} created={created} dry_run={dry_run} "
+        f"skipped_exists={skipped_exists} skipped_no_catalog={skipped_no_catalog} failed={failed}"
     )
 
 
