@@ -423,9 +423,10 @@ def main() -> None:
             if snap:
                 print(
                     f"  inventory_item_id={snap.get('inventory_item_id')} tracked={snap.get('tracked')} "
-                    f"location={snap.get('primary_location_name')!r} "
+                    f"location_id={snap.get('primary_location_id')} "
                     f"available={snap.get('available')} committed={snap.get('committed')} "
-                    f"on_hand={snap.get('on_hand')} unavailable={snap.get('unavailable')}"
+                    f"on_hand={snap.get('on_hand')} incoming={snap.get('incoming')} "
+                    f"reserved={snap.get('reserved')}"
                 )
         elif outcome == "failed":
             failed += 1

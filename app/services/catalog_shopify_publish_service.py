@@ -54,7 +54,8 @@ class VariantInventoryLevelSnapshot(TypedDict, total=False):
     available: Optional[int]
     committed: Optional[int]
     on_hand: Optional[int]
-    unavailable: Optional[int]
+    incoming: Optional[int]
+    reserved: Optional[int]
 
 
 class VariantInventorySnapshot(TypedDict, total=False):
@@ -70,7 +71,8 @@ class VariantInventorySnapshot(TypedDict, total=False):
     available: Optional[int]
     committed: Optional[int]
     on_hand: Optional[int]
-    unavailable: Optional[int]
+    incoming: Optional[int]
+    reserved: Optional[int]
     levels: List[VariantInventoryLevelSnapshot]
 
 
@@ -806,9 +808,8 @@ query VariantInventorySnapshot($variantId: ID!) {
           id
           location {
             id
-            name
           }
-          quantities(names: ["available", "committed", "on_hand", "unavailable"]) {
+          quantities(names: ["available", "committed", "on_hand", "incoming", "reserved"]) {
             name
             quantity
           }
@@ -847,11 +848,12 @@ def fetch_variant_inventory_snapshot(
         levels_out.append(
             {
                 "location_id": loc.get("id"),
-                "location_name": loc.get("name"),
+                "location_name": None,
                 "available": qty.get("available"),
                 "committed": qty.get("committed"),
                 "on_hand": qty.get("on_hand"),
-                "unavailable": qty.get("unavailable"),
+                "incoming": qty.get("incoming"),
+                "reserved": qty.get("reserved"),
             }
         )
 
@@ -875,7 +877,8 @@ def fetch_variant_inventory_snapshot(
         snapshot["available"] = primary.get("available")
         snapshot["committed"] = primary.get("committed")
         snapshot["on_hand"] = primary.get("on_hand")
-        snapshot["unavailable"] = primary.get("unavailable")
+        snapshot["incoming"] = primary.get("incoming")
+        snapshot["reserved"] = primary.get("reserved")
     return snapshot
 
 
@@ -884,17 +887,17 @@ def format_variant_inventory_snapshot_line(
     barcode: str,
     snapshot: VariantInventorySnapshot,
 ) -> str:
-    loc = snapshot.get("configured_location_id") or "n/a"
-    loc_name = snapshot.get("primary_location_name") or "n/a"
+    loc = snapshot.get("configured_location_id") or snapshot.get("primary_location_id") or "n/a"
     return (
         f"[inventory-snapshot] barcode={barcode} "
         f"product_id={snapshot.get('product_id')} variant_id={snapshot.get('variant_id')} "
         f"inventory_item_id={snapshot.get('inventory_item_id')} "
         f"inventory_policy={snapshot.get('inventory_policy')} "
         f"tracked={snapshot.get('tracked')} requires_shipping={snapshot.get('requires_shipping')} "
-        f"location_id={loc} location_name={loc_name!r} "
+        f"location_id={loc} "
         f"available={snapshot.get('available')} committed={snapshot.get('committed')} "
-        f"on_hand={snapshot.get('on_hand')} unavailable={snapshot.get('unavailable')}"
+        f"on_hand={snapshot.get('on_hand')} incoming={snapshot.get('incoming')} "
+        f"reserved={snapshot.get('reserved')}"
     )
 
 
