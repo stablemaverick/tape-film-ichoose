@@ -1227,3 +1227,58 @@ def run_catalog_shopify_publish(
             summary["failed"] += 1
 
     return CatalogShopifyPublishRunResult(results=results, summary=summary)
+
+
+def print_publish_cli_summary(
+    result: CatalogShopifyPublishRunResult,
+    *,
+    supplier_mode: str,
+) -> int:
+    """Human-readable stdout for VM / ad-hoc scripts. Returns exit code (0 ok, 2 if any failed)."""
+    created = skipped_exists = skipped_no_catalog = failed = dry_run = 0
+    for row in result["results"]:
+        outcome = row.get("outcome")
+        barcode = row.get("barcode", "")
+        if outcome == "skipped_exists_shopify":
+            skipped_exists += 1
+            print(
+                f"SKIP exists barcode={barcode} "
+                f"product={row.get('existing_shopify_product_id')} "
+                f"variant={row.get('existing_shopify_variant_id')}"
+            )
+        elif outcome == "skipped_no_catalog":
+            skipped_no_catalog += 1
+            print(f"SKIP no_catalog barcode={barcode} supplier_mode={supplier_mode}")
+        elif outcome == "dry_run":
+            dry_run += 1
+            print(
+                f"DRY-RUN create barcode={barcode} title={row.get('title')} "
+                f"inventory_policy={row.get('inventory_policy')} preorder={row.get('preorder')} "
+                f"handle={row.get('handle')}"
+            )
+        elif outcome == "created":
+            created += 1
+            snap = row.get("inventory_snapshot") or {}
+            print(
+                f"CREATED barcode={barcode} product_id={row.get('shopify_product_id')} "
+                f"variant_id={row.get('shopify_variant_id')} title={row.get('title')} "
+                f"inventory_policy={row.get('inventory_policy')}"
+            )
+            if snap:
+                print(
+                    f"  inventory_item_id={snap.get('inventory_item_id')} tracked={snap.get('tracked')} "
+                    f"location_id={snap.get('primary_location_id')} "
+                    f"available={snap.get('available')} committed={snap.get('committed')} "
+                    f"on_hand={snap.get('on_hand')} incoming={snap.get('incoming')} "
+                    f"reserved={snap.get('reserved')}"
+                )
+        elif outcome == "failed":
+            failed += 1
+            print(f"ERROR barcode={barcode}: {row.get('message')}")
+
+    n = result["summary"].get("input", len(result["results"]))
+    print(
+        f"\nDone. input={n} created={created} dry_run={dry_run} "
+        f"skipped_exists={skipped_exists} skipped_no_catalog={skipped_no_catalog} failed={failed}"
+    )
+    return 0 if failed == 0 else 2

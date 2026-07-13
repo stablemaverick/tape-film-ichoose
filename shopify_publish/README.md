@@ -15,6 +15,7 @@ SHOPIFY_CLIENT_ID=your_client_id
 SHOPIFY_CLIENT_SECRET=your_client_secret
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_service_key
+SHOPIFY_INVENTORY_LOCATION_ID=gid://shopify/Location/XXXXXXXX
 GBP_AUD_RATE=1.95
 LANDED_COST_MARKUP=1.12
 ```
