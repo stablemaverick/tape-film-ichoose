@@ -2,13 +2,17 @@
 """
 Reconcile Shopify on-hand quantities with ``catalog_items``; optional push via Admin API.
 
-Set ``SHOPIFY_INVENTORY_APPLY=1`` and ``SHOPIFY_INVENTORY_LOCATION_ID`` to write to Shopify.
+Shopify quantity writes require **all** of:
+``--apply``, ``SHOPIFY_INVENTORY_APPLY=1``, and not ``--dry-run``.
+
+Preorder / expected negative drifts are never pushed (breaks CONTINUE preorder books).
+This job is **not** on cron; use store sync for DB mirroring and publish for product creates.
 
 Usage::
 
-    ./venv/bin/python -m jobs.shopify_inventory_sync
     ./venv/bin/python -m jobs.shopify_inventory_sync --dry-run
     ./venv/bin/python -m jobs.shopify_inventory_sync --dry-run --drift-report logs/shopify_inventory_drift.json
+    ./venv/bin/python -m jobs.shopify_inventory_sync --apply   # still needs SHOPIFY_INVENTORY_APPLY=1
 """
 
 from __future__ import annotations
@@ -55,6 +59,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Compare only; no Supabase timestamps or Shopify mutations",
     )
     parser.add_argument(
+        "--apply",
+        action="store_true",
+        help=(
+            "Allow Shopify inventorySetQuantities when SHOPIFY_INVENTORY_APPLY=1. "
+            "Without this flag the job never writes quantities to Shopify."
+        ),
+    )
+    parser.add_argument(
         "--drift-report",
         metavar="PATH",
         default=None,
@@ -62,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--env-file", default=".env", help="Path to .env (default: .env under repo root)")
     args = parser.parse_args(argv)
+
+    if args.apply and args.dry_run:
+        parser.error("Use either --apply or --dry-run, not both")
 
     repo = _repo_root()
     os.chdir(repo)
@@ -79,7 +94,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from app.services.shopify_inventory_sync_service import run_shopify_inventory_sync
 
-        result = run_shopify_inventory_sync(env_file=str(env_path), dry_run=args.dry_run)
+        result = run_shopify_inventory_sync(
+            env_file=str(env_path),
+            dry_run=args.dry_run,
+            apply=args.apply,
+        )
         drift_details = result.get("drift_details")
         summary = {k: v for k, v in result.items() if k != "drift_details"}
         log.info("shopify_inventory_sync finished: %s", summary if drift_details else result)

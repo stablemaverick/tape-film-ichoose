@@ -5,10 +5,13 @@ Uses ``shopify_listings`` (from store sync) + direct ``catalog_items`` reads onl
 Does not call supplier import, normalize, catalog upsert, or legacy stock sync.
 
 With ``dry_run=True``, returns a ``drift_details`` list for every quantity mismatch where a target
-quantity could be derived (so you can inspect before ``SHOPIFY_INVENTORY_APPLY=1``).
+quantity could be derived.
 
-Each drift row includes ``drift_classification`` (expected preorder/backorder negative inventory,
-true mismatch, or unclassified) for business interpretation — mutations stay opt-in via env + not dry-run.
+Shopify quantity mutations require **all** of:
+``apply=True`` (CLI ``--apply``), ``SHOPIFY_INVENTORY_APPLY=1``, and not ``dry_run``.
+
+Preorder catalog rows and expected preorder/backorder negative drift are **never** applied —
+pushing ``available → 0`` re-inflates ``on_hand`` and breaks CONTINUE preorder books.
 """
 
 from __future__ import annotations
@@ -131,7 +134,10 @@ def classify_inventory_drift(
 
 def desired_qty_from_catalog_item(row: Dict[str, Any]) -> Optional[int]:
     """
-    Return a target on-hand quantity when we can infer it; otherwise None (skip push).
+    Return a target on-hand quantity when we can infer it; otherwise None (skip).
+
+    Preorder still reports a target of ``0`` for drift classification only.
+    Those rows are never queued for Shopify apply (see ``should_queue_inventory_apply``).
     """
     av = (row.get("availability_status") or "").strip().lower()
     if av in ("supplier_out", "store_out", "discontinued", "inactive"):
@@ -155,6 +161,30 @@ def desired_qty_from_catalog_item(row: Dict[str, Any]) -> Optional[int]:
     if low in ("in stock", "instock", "available", "yes"):
         return None
     return None
+
+
+_NEVER_APPLY_DRIFT = frozenset(
+    {
+        "expected_preorder_negative_inventory",
+        "expected_backorder_negative_inventory",
+    }
+)
+
+
+def should_queue_inventory_apply(
+    *,
+    cat: Dict[str, Any],
+    drift_classification: str,
+    has_inventory_item: bool,
+) -> bool:
+    """Whether a drift row may be sent to ``inventorySetQuantities``."""
+    if not has_inventory_item:
+        return False
+    if _pre_order_from_catalog(cat):
+        return False
+    if drift_classification in _NEVER_APPLY_DRIFT:
+        return False
+    return True
 
 
 def _drift_reason(
@@ -216,7 +246,12 @@ def _inventory_set_quantities_idempotency_key(
     return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
 
 
-def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False) -> Dict[str, Any]:
+def run_shopify_inventory_sync(
+    *,
+    env_file: str = ".env",
+    dry_run: bool = False,
+    apply: bool = False,
+) -> Dict[str, Any]:
     path = _env_path(env_file)
     load_dotenv(path)
 
@@ -230,7 +265,8 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
     if not url or not key:
         raise SystemExit("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY")
 
-    do_apply = _apply_inventory() and not dry_run
+    # Triple gate: CLI --apply, env SHOPIFY_INVENTORY_APPLY, not dry-run.
+    do_apply = bool(apply) and _apply_inventory() and not dry_run
     if do_apply and not location_id:
         raise SystemExit(
             "SHOPIFY_INVENTORY_APPLY is set but SHOPIFY_INVENTORY_LOCATION_ID is missing "
@@ -271,6 +307,7 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
     skipped_no_catalog_row = 0
     skipped_no_target = 0
     skipped_no_inventory_item = 0
+    skipped_never_apply = 0
     in_sync = 0
     to_fix: List[Dict[str, Any]] = []
     drift_details: List[Dict[str, Any]] = []
@@ -296,6 +333,11 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
         has_inv = bool(inv_item)
         pre_order = _pre_order_from_catalog(cat)
         drift_classification = classify_inventory_drift(lst, cat, shop_qty)
+        queue_apply = should_queue_inventory_apply(
+            cat=cat,
+            drift_classification=drift_classification,
+            has_inventory_item=has_inv,
+        )
 
         drift_details.append(
             {
@@ -318,12 +360,15 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
                 "drift_reason": _drift_reason(
                     cat, desired, shop_qty, has_inventory_item=has_inv
                 ),
-                "can_apply_mutation": has_inv,
+                "can_apply_mutation": queue_apply,
             }
         )
 
         if not inv_item:
             skipped_no_inventory_item += 1
+            continue
+        if not queue_apply:
+            skipped_never_apply += 1
             continue
         to_fix.append(
             {
@@ -415,6 +460,7 @@ def run_shopify_inventory_sync(*, env_file: str = ".env", dry_run: bool = False)
         "skipped_no_catalog_row": skipped_no_catalog_row,
         "skipped_no_target_qty": skipped_no_target,
         "skipped_no_inventory_item": skipped_no_inventory_item,
+        "skipped_never_apply_count": skipped_never_apply,
         "drift_detected": drift_detected,
         "drift_applyable_count": drift_applyable,
         "drift_expected_preorder_count": int(
