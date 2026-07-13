@@ -29,6 +29,13 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Read-only mirror into shopify_listings (does not write quantities to Shopify).
 20 22 * * * /bin/bash /opt/tape-film-ichoose/scripts/run_shopify_store_sync.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_shopify_store_sync.log
 
+# --- Supplier orders needed (daily 09:40 Sydney) ---
+# Read-only Shopify tally → FTP folder for user tapester + Slack summary.
+# Default out dir: /srv/ftps/data/tapester/reports/supplier_orders
+# Override: SUPPLIER_ORDERS_REPORT_DIR in .env / .env.prod
+# Does NOT write inventory to Shopify.
+40 22 * * * /bin/bash /opt/tape-film-ichoose/scripts/run_supplier_orders_report_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_supplier_orders_report.log
+
 # Shopify inventory sync is intentionally NOT cron'd. It can push catalog qty onto
 # Shopify available and breaks preorder books. Run manually only if needed:
 #   ./venv/bin/python -m jobs.shopify_inventory_sync --dry-run --env-file .env.prod
