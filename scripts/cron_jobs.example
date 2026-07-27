@@ -32,7 +32,10 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # --- Supplier orders needed (daily 09:40 Sydney) ---
 # Read-only Shopify tally → FTP folder for user tapester + Slack summary.
 # Default out dir: /srv/ftps/data/tapester/reports/supplier_orders
-# Override: SUPPLIER_ORDERS_REPORT_DIR in .env / .env.prod
+# Open-PO uploads (latest *.csv wins): .../supplier_orders/inbound/
+#   CSV headers: order_id,sku,title,qty,unit_cost,line_total,status
+#   Example template: reports/supplier_orders_inbound.example.csv
+# Override: SUPPLIER_ORDERS_REPORT_DIR / SUPPLIER_ORDERS_INBOUND_DIR in .env
 # Does NOT write inventory to Shopify.
 40 22 * * * /bin/bash /opt/tape-film-ichoose/scripts/run_supplier_orders_report_with_notify.sh 2>&1 | /usr/bin/tee -a /opt/tape-film-ichoose/logs/cron_supplier_orders_report.log
 

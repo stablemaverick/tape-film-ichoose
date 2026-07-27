@@ -11,6 +11,9 @@ Usage::
     ./venv/bin/python -m jobs.supplier_orders_report --env-file .env.prod
     ./venv/bin/python -m jobs.supplier_orders_report --env-file .env.prod \\
         --out-dir /srv/ftps/data/tapester/reports/supplier_orders --print-slack
+
+Open PO CSVs (latest wins) are read from ``--inbound-dir`` or
+``$OUT_DIR/inbound`` (override with SUPPLIER_ORDERS_INBOUND_DIR).
 """
 
 from __future__ import annotations
@@ -54,6 +57,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", default=".env", help="Path to .env (default: .env under repo root)")
     parser.add_argument("--out-dir", default=None, help="CSV output directory (default: tmp/)")
     parser.add_argument(
+        "--inbound-dir",
+        default=None,
+        help="Open PO CSV folder (default: $OUT_DIR/inbound or SUPPLIER_ORDERS_INBOUND_DIR)",
+    )
+    parser.add_argument(
         "--print-slack",
         action="store_true",
         help="Print Slack summary text to stdout (for notify wrapper)",
@@ -76,7 +84,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from app.services.supplier_orders_report_service import run_supplier_orders_report
 
-        result = run_supplier_orders_report(env_file=str(env_path), out_dir=args.out_dir)
+        result = run_supplier_orders_report(
+            env_file=str(env_path),
+            out_dir=args.out_dir,
+            inbound_dir=args.inbound_dir,
+        )
         slack_text = result.pop("slack_text", "")
         log.info("supplier_orders_report finished: %s", result)
         print(f"[jobs.supplier_orders_report] SUCCESS — {json.dumps(result, default=str)}")

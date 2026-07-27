@@ -5,6 +5,9 @@
 #
 # CSVs are written to the tapester FTP home (override with SUPPLIER_ORDERS_REPORT_DIR):
 #   /srv/ftps/data/tapester/reports/supplier_orders/
+# Upload open-PO snapshots (latest *.csv wins) to:
+#   /srv/ftps/data/tapester/reports/supplier_orders/inbound/
+# Override inbound with SUPPLIER_ORDERS_INBOUND_DIR.
 # =============================================================================
 set -euo pipefail
 
@@ -53,28 +56,32 @@ safe_load_env_file "${ROOT}/.env"
 safe_load_env_file "${ROOT}/.env.prod"
 
 REPORT_DIR="${SUPPLIER_ORDERS_REPORT_DIR:-${DEFAULT_REPORT_DIR}}"
+INBOUND_DIR="${SUPPLIER_ORDERS_INBOUND_DIR:-${REPORT_DIR}/inbound}"
 
-if ! mkdir -p "${REPORT_DIR}" 2>/dev/null; then
-  echo "[${JOB_LABEL}] ERROR: cannot create REPORT_DIR=${REPORT_DIR}" >&2
+if ! mkdir -p "${REPORT_DIR}" "${INBOUND_DIR}" 2>/dev/null; then
+  echo "[${JOB_LABEL}] ERROR: cannot create REPORT_DIR=${REPORT_DIR} or INBOUND_DIR=${INBOUND_DIR}" >&2
   echo "[${JOB_LABEL}] Create it once on the VM, e.g.:" >&2
-  echo "  sudo mkdir -p ${DEFAULT_REPORT_DIR}" >&2
-  echo "  sudo chown $(whoami):$(whoami) ${DEFAULT_REPORT_DIR}" >&2
+  echo "  sudo mkdir -p ${DEFAULT_REPORT_DIR}/inbound" >&2
+  echo "  sudo chown $(whoami):$(whoami) ${DEFAULT_REPORT_DIR} ${DEFAULT_REPORT_DIR}/inbound" >&2
   echo "  sudo chmod 755 ${DEFAULT_REPORT_DIR}" >&2
+  echo "  sudo chmod 775 ${DEFAULT_REPORT_DIR}/inbound" >&2
   "${NOTIFY}" "❌ ${JOB_LABEL} FAILURE host=${HOST} cannot create ${REPORT_DIR}"
   exit 1
 fi
-# Ensure tapester (and FTP clients) can read files written by the cron user.
+# Ensure tapester (and FTP clients) can read report CSVs and upload into inbound/.
 chmod 755 "${REPORT_DIR}" 2>/dev/null || true
+chmod 775 "${INBOUND_DIR}" 2>/dev/null || true
 
 cd "${ROOT}"
-echo "[${JOB_LABEL}] START out_dir=${REPORT_DIR}" >&2
-"${NOTIFY}" "📦 ${JOB_LABEL} START host=${HOST} out_dir=${REPORT_DIR}"
+echo "[${JOB_LABEL}] START out_dir=${REPORT_DIR} inbound_dir=${INBOUND_DIR}" >&2
+"${NOTIFY}" "📦 ${JOB_LABEL} START host=${HOST} out_dir=${REPORT_DIR} inbound=${INBOUND_DIR}"
 
 set +e
 # Capture Slack body from stdout; job logs go to stderr / log file.
 slack_body="$("${VENV_PYTHON}" -m jobs.supplier_orders_report \
   --env-file /opt/tape-film-ichoose/.env.prod \
   --out-dir "${REPORT_DIR}" \
+  --inbound-dir "${INBOUND_DIR}" \
   --print-slack 2>>"${ROOT}/logs/cron_supplier_orders_report.log")"
 exit_code=$?
 set -e

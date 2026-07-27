@@ -8,7 +8,8 @@ Produces:
   - **Daily delta** — vs previous snapshot (``supplier_orders_delta*.csv``), sorted by
     ``qty_delta`` descending (largest new/increased needs first; cleared are negative)
 
-``qty_to_order`` ≈ units still owed to customers and not covered by on_hand/incoming.
+``qty_to_order`` ≈ units still owed after on_hand, Shopify incoming, and open supplier POs
+(from the latest CSV in the inbound folder).
 """
 
 from __future__ import annotations
@@ -26,6 +27,15 @@ from dotenv import load_dotenv
 from app.clients.shopify_client import ShopifyClient
 from app.helpers.text_helpers import clean_text
 from app.services.shopify_inventory_settings_audit import parse_shopify_bool_metafield
+from app.services.supplier_po_inbound import (
+    allocate_po_cover_for_variant,
+    build_shopify_match_indexes,
+    collect_unmatched_po_lines,
+    load_po_inbound_snapshot,
+    normalize_match_key,
+    remaining_qty_maps,
+    write_unmatched_csv,
+)
 
 PRODUCTS_QUERY = """
 query SupplierOrdersReport($cursor: String, $locId: ID!) {
@@ -69,6 +79,10 @@ CSV_FIELDS = [
     "barcode",
     "sku",
     "qty_to_order",
+    "shopify_need",
+    "open_po_qty",
+    "po_match",
+    "po_order_ids",
     "committed",
     "available",
     "on_hand",
@@ -88,6 +102,10 @@ DELTA_CSV_FIELDS = [
     "qty_delta",
     "qty_previous",
     "qty_to_order",
+    "shopify_need",
+    "open_po_qty",
+    "po_match",
+    "po_order_ids",
     "product_title",
     "barcode",
     "sku",
@@ -110,6 +128,10 @@ class SupplierOrderRow:
     barcode: str
     sku: str
     qty_to_order: int
+    shopify_need: int
+    open_po_qty: int
+    po_match: str
+    po_order_ids: str
     committed: int
     available: int
     on_hand: int
@@ -130,6 +152,10 @@ class SupplierOrderDeltaRow:
     qty_delta: int
     qty_previous: int
     qty_to_order: int
+    shopify_need: int
+    open_po_qty: int
+    po_match: str
+    po_order_ids: str
     product_title: str
     barcode: str
     sku: str
@@ -139,6 +165,26 @@ class SupplierOrderDeltaRow:
     incoming: int
     inventory_policy: str
     reason: str
+    media_release_date: str
+    product_status: str
+    shopify_product_id: str
+    shopify_variant_id: str
+
+
+@dataclass
+class _ShopifyNeedCandidate:
+    product_title: str
+    barcode: str
+    sku: str
+    shopify_need: int
+    committed: int
+    available: int
+    on_hand: int
+    incoming: int
+    inventory_policy: str
+    is_preorder: bool
+    pre_order_metafield: bool
+    backorder_metafield: bool
     media_release_date: str
     product_status: str
     shopify_product_id: str
@@ -265,6 +311,10 @@ def load_previous_qty_by_variant(path: Path) -> Dict[str, Dict[str, Any]]:
                 continue
             out[vid] = {
                 "qty_to_order": _safe_int(row.get("qty_to_order")),
+                "shopify_need": _safe_int(row.get("shopify_need"), _safe_int(row.get("qty_to_order"))),
+                "open_po_qty": _safe_int(row.get("open_po_qty")),
+                "po_match": row.get("po_match") or "",
+                "po_order_ids": row.get("po_order_ids") or "",
                 "product_title": row.get("product_title") or "",
                 "barcode": row.get("barcode") or "",
                 "sku": row.get("sku") or "",
@@ -339,6 +389,10 @@ def compute_daily_delta(
                 qty_delta=qty_delta,
                 qty_previous=prev_qty,
                 qty_to_order=r.qty_to_order,
+                shopify_need=r.shopify_need,
+                open_po_qty=r.open_po_qty,
+                po_match=r.po_match,
+                po_order_ids=r.po_order_ids,
                 product_title=r.product_title,
                 barcode=r.barcode,
                 sku=r.sku,
@@ -367,6 +421,10 @@ def compute_daily_delta(
                 qty_delta=-prev_qty,
                 qty_previous=prev_qty,
                 qty_to_order=0,
+                shopify_need=_safe_int(prev.get("shopify_need")),
+                open_po_qty=_safe_int(prev.get("open_po_qty")),
+                po_match=str(prev.get("po_match") or ""),
+                po_order_ids=str(prev.get("po_order_ids") or ""),
                 product_title=str(prev.get("product_title") or ""),
                 barcode=str(prev.get("barcode") or ""),
                 sku=str(prev.get("sku") or ""),
@@ -386,17 +444,20 @@ def compute_daily_delta(
     return deltas
 
 
-def collect_supplier_order_rows(
+def collect_shopify_need_candidates(
     client: ShopifyClient,
     location_id: str,
     *,
     today: Optional[date] = None,
     sleep_s: float = 0.2,
-) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow]]:
-    """Return (preorder_rows, other_oversell_rows)."""
+) -> Tuple[List[_ShopifyNeedCandidate], List[Dict[str, str]]]:
+    """
+    Walk Shopify products; return candidates with shopify_need > 0 plus all
+    variant identity rows for PO matching indexes.
+    """
     as_of = today or date.today()
-    preorder_rows: List[SupplierOrderRow] = []
-    other_rows: List[SupplierOrderRow] = []
+    candidates: List[_ShopifyNeedCandidate] = []
+    all_variants: List[Dict[str, str]] = []
     cursor: Optional[str] = None
 
     while True:
@@ -423,40 +484,39 @@ def collect_supplier_order_rows(
                 on_hand = q.get("on_hand", 0)
                 incoming = q.get("incoming", 0)
                 policy = (clean_text(variant.get("inventoryPolicy")) or "").upper()
-                need = qty_to_order(available, committed, on_hand, incoming)
-                reason = classify_supplier_need(
-                    is_preorder=is_preorder,
-                    policy=policy,
-                    backorder=back,
-                    available=available,
-                    committed=committed,
-                    on_hand=on_hand,
-                    need=need,
+                sku = clean_text(variant.get("sku")) or ""
+                barcode = clean_text(variant.get("barcode")) or ""
+                variant_id = clean_text(variant.get("id")) or ""
+                all_variants.append(
+                    {
+                        "shopify_variant_id": variant_id,
+                        "sku": sku,
+                        "product_title": title,
+                    }
                 )
-                if not reason:
+                shopify_need = qty_to_order(available, committed, on_hand, incoming)
+                if shopify_need <= 0:
                     continue
-                row = SupplierOrderRow(
-                    product_title=title,
-                    barcode=clean_text(variant.get("barcode")) or "",
-                    sku=clean_text(variant.get("sku")) or "",
-                    qty_to_order=need,
-                    committed=committed,
-                    available=available,
-                    on_hand=on_hand,
-                    incoming=incoming,
-                    inventory_policy=policy,
-                    reason=reason,
-                    media_release_date=release.isoformat() if release else "",
-                    pre_order_metafield=pre,
-                    backorder_metafield=back,
-                    product_status=status,
-                    shopify_product_id=product_id,
-                    shopify_variant_id=clean_text(variant.get("id")) or "",
+                candidates.append(
+                    _ShopifyNeedCandidate(
+                        product_title=title,
+                        barcode=barcode,
+                        sku=sku,
+                        shopify_need=shopify_need,
+                        committed=committed,
+                        available=available,
+                        on_hand=on_hand,
+                        incoming=incoming,
+                        inventory_policy=policy,
+                        is_preorder=is_preorder,
+                        pre_order_metafield=pre,
+                        backorder_metafield=back,
+                        media_release_date=release.isoformat() if release else "",
+                        product_status=status,
+                        shopify_product_id=product_id,
+                        shopify_variant_id=variant_id,
+                    )
                 )
-                if reason == "preorder":
-                    preorder_rows.append(row)
-                else:
-                    other_rows.append(row)
 
         page = conn.get("pageInfo") or {}
         if not page.get("hasNextPage"):
@@ -465,7 +525,122 @@ def collect_supplier_order_rows(
         if sleep_s > 0:
             time.sleep(sleep_s)
 
-    return preorder_rows, other_rows
+    return candidates, all_variants
+
+
+def apply_po_cover_to_candidates(
+    candidates: List[_ShopifyNeedCandidate],
+    all_variants: List[Dict[str, str]],
+    inbound_dir: Optional[Path],
+) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
+    """
+    Net open PO qty against Shopify need; classify remaining still-needed rows.
+
+    Returns (preorder_rows, other_rows, po_meta).
+    """
+    snapshot = load_po_inbound_snapshot(inbound_dir)
+    sku_index, title_index, ambiguous_titles = build_shopify_match_indexes(all_variants)
+    remaining_sku, remaining_title = remaining_qty_maps(snapshot)
+
+    matched_sku_keys: set[str] = set()
+    matched_title_keys: set[str] = set()
+    preorder_rows: List[SupplierOrderRow] = []
+    other_rows: List[SupplierOrderRow] = []
+    covered_units = 0
+
+    for c in candidates:
+        open_po_qty, po_match, po_order_ids = allocate_po_cover_for_variant(
+            sku=c.sku,
+            product_title=c.product_title,
+            shopify_need=c.shopify_need,
+            remaining_sku_qty=remaining_sku,
+            remaining_title_qty=remaining_title,
+            by_sku=snapshot.by_sku,
+            by_title=snapshot.by_title,
+            ambiguous_titles=ambiguous_titles,
+        )
+        if po_match == "sku":
+            matched_sku_keys.add(normalize_match_key(c.sku))
+        elif po_match == "title":
+            matched_title_keys.add(normalize_match_key(c.product_title))
+
+        still_needed = max(0, c.shopify_need - open_po_qty)
+        covered_units += open_po_qty
+        reason = classify_supplier_need(
+            is_preorder=c.is_preorder,
+            policy=c.inventory_policy,
+            backorder=c.backorder_metafield,
+            available=c.available,
+            committed=c.committed,
+            on_hand=c.on_hand,
+            need=still_needed,
+        )
+        if not reason:
+            continue
+        row = SupplierOrderRow(
+            product_title=c.product_title,
+            barcode=c.barcode,
+            sku=c.sku,
+            qty_to_order=still_needed,
+            shopify_need=c.shopify_need,
+            open_po_qty=open_po_qty,
+            po_match=po_match,
+            po_order_ids=po_order_ids,
+            committed=c.committed,
+            available=c.available,
+            on_hand=c.on_hand,
+            incoming=c.incoming,
+            inventory_policy=c.inventory_policy,
+            reason=reason,
+            media_release_date=c.media_release_date,
+            pre_order_metafield=c.pre_order_metafield,
+            backorder_metafield=c.backorder_metafield,
+            product_status=c.product_status,
+            shopify_product_id=c.shopify_product_id,
+            shopify_variant_id=c.shopify_variant_id,
+        )
+        if reason == "preorder":
+            preorder_rows.append(row)
+        else:
+            other_rows.append(row)
+
+    unmatched = collect_unmatched_po_lines(
+        snapshot,
+        matched_sku_keys=matched_sku_keys,
+        matched_title_keys=matched_title_keys,
+        shopify_sku_keys=set(sku_index.keys()),
+        shopify_title_keys=set(title_index.keys()),
+        ambiguous_titles=ambiguous_titles,
+    )
+
+    po_meta: Dict[str, Any] = {
+        "inbound_path": str(snapshot.path.resolve()) if snapshot.path else None,
+        "inbound_open_lines": len(snapshot.lines),
+        "inbound_skipped_status": snapshot.skipped_status,
+        "inbound_parse_errors": list(snapshot.parse_errors),
+        "po_units_applied": covered_units,
+        "unmatched_po_lines": unmatched,
+        "unmatched_po_count": len(unmatched),
+    }
+    return preorder_rows, other_rows, po_meta
+
+
+def collect_supplier_order_rows(
+    client: ShopifyClient,
+    location_id: str,
+    *,
+    today: Optional[date] = None,
+    sleep_s: float = 0.2,
+    inbound_dir: Optional[Path] = None,
+) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
+    """Return (preorder_rows, other_oversell_rows, po_meta)."""
+    candidates, all_variants = collect_shopify_need_candidates(
+        client,
+        location_id,
+        today=today,
+        sleep_s=sleep_s,
+    )
+    return apply_po_cover_to_candidates(candidates, all_variants, inbound_dir)
 
 
 def format_slack_summary(
@@ -477,12 +652,15 @@ def format_slack_summary(
     delta_path: Path,
     baseline_path: Optional[Path],
     host: str,
+    po_meta: Optional[Dict[str, Any]] = None,
+    unmatched_path: Optional[Path] = None,
     top_n: int = 8,
 ) -> str:
     combined = preorder_rows + other_rows
     pre_units = sum(r.qty_to_order for r in preorder_rows)
     other_units = sum(r.qty_to_order for r in other_rows)
     total_units = pre_units + other_units
+    po_covered = sum(r.open_po_qty for r in combined)
 
     # Largest positive deltas first (what to order today).
     delta_desc = sorted(delta_rows, key=lambda x: -x.qty_delta)
@@ -498,6 +676,18 @@ def format_slack_summary(
         f"  preorder: {len(preorder_rows)} lines / {pre_units} units",
         f"  continue/oversell: {len(other_rows)} lines / {other_units} units",
     ]
+    meta = po_meta or {}
+    if meta.get("inbound_path"):
+        lines.append(
+            f"PO inbound: {Path(meta['inbound_path']).name} "
+            f"({meta.get('inbound_open_lines', 0)} open lines; "
+            f"{meta.get('po_units_applied', po_covered)} units applied; "
+            f"{meta.get('unmatched_po_count', 0)} unmatched)"
+        )
+    else:
+        lines.append("PO inbound: none (qty_to_order = Shopify need only)")
+    if unmatched_path is not None:
+        lines.append(f"unmatched po csv: {unmatched_path}")
     if baseline_path is None:
         lines.append(
             "DELTA vs previous: no baseline yet (first run — treat outstanding as starting point)"
@@ -525,14 +715,35 @@ def format_slack_summary(
         lines.append("outstanding top:")
         for r in sorted(combined, key=lambda x: -x.qty_to_order)[:top_n]:
             bc = r.barcode or "(no barcode)"
-            lines.append(f"  {r.qty_to_order}× {bc} — {r.product_title[:70]}")
+            po_bit = f", po={r.open_po_qty}" if r.open_po_qty else ""
+            lines.append(f"  {r.qty_to_order}× {bc} — {r.product_title[:70]}{po_bit}")
     return "\n".join(lines)
+
+
+def resolve_inbound_dir(
+    *,
+    out_dir: Path,
+    inbound_dir: Optional[str] = None,
+) -> Path:
+    """
+    Prefer explicit path / SUPPLIER_ORDERS_INBOUND_DIR, else ``out_dir/inbound``.
+    When out_dir is the default tmp/, use ``tmp/supplier_orders/inbound``.
+    """
+    env_dir = clean_text(os.getenv("SUPPLIER_ORDERS_INBOUND_DIR"))
+    if inbound_dir:
+        return Path(inbound_dir)
+    if env_dir:
+        return Path(env_dir)
+    if out_dir.name == "tmp" and out_dir.parent == _repo_root():
+        return out_dir / "supplier_orders" / "inbound"
+    return out_dir / "inbound"
 
 
 def run_supplier_orders_report(
     *,
     env_file: str = ".env",
     out_dir: Optional[str] = None,
+    inbound_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     path = _env_path(env_file)
     load_dotenv(path)
@@ -547,13 +758,19 @@ def run_supplier_orders_report(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     base = Path(out_dir) if out_dir else (_repo_root() / "tmp")
     base.mkdir(parents=True, exist_ok=True)
+    inbound_path = resolve_inbound_dir(out_dir=base, inbound_dir=inbound_dir)
+    inbound_path.mkdir(parents=True, exist_ok=True)
 
     # Diff against previous snapshot *before* overwriting latest.
     baseline_path = find_baseline_snapshot(base, stamp)
     previous_by_variant = load_previous_qty_by_variant(baseline_path) if baseline_path else {}
 
     client = ShopifyClient()
-    preorder_rows, other_rows = collect_supplier_order_rows(client, location_id)
+    preorder_rows, other_rows, po_meta = collect_supplier_order_rows(
+        client,
+        location_id,
+        inbound_dir=inbound_path,
+    )
     combined: List[SupplierOrderRow] = []
     seen = set()
     for r in preorder_rows + other_rows:
@@ -569,10 +786,12 @@ def run_supplier_orders_report(
         "continue_oos": base / f"supplier_orders_continue_oos_{stamp}.csv",
         "combined": base / f"supplier_orders_needed_{stamp}.csv",
         "delta": base / f"supplier_orders_delta_{stamp}.csv",
+        "unmatched": base / f"supplier_po_unmatched_{stamp}.csv",
         "latest_combined": base / "supplier_orders_needed.csv",
         "latest_preorder": base / "supplier_orders_preorder.csv",
         "latest_continue": base / "supplier_orders_continue_oos.csv",
         "latest_delta": base / "supplier_orders_delta.csv",
+        "latest_unmatched": base / "supplier_po_unmatched.csv",
     }
     _write_csv(paths["preorder"], preorder_rows)
     _write_csv(paths["continue_oos"], other_rows)
@@ -582,6 +801,8 @@ def run_supplier_orders_report(
     _write_csv(paths["latest_preorder"], preorder_rows)
     _write_csv(paths["latest_continue"], other_rows)
     _write_delta_csv(paths["latest_delta"], delta_rows)
+    write_unmatched_csv(paths["unmatched"], po_meta.get("unmatched_po_lines") or [])
+    write_unmatched_csv(paths["latest_unmatched"], po_meta.get("unmatched_po_lines") or [])
 
     pre_units = sum(r.qty_to_order for r in preorder_rows)
     other_units = sum(r.qty_to_order for r in other_rows)
@@ -593,6 +814,11 @@ def run_supplier_orders_report(
         "job": "supplier_orders_report",
         "as_of_utc": datetime.now(timezone.utc).isoformat(),
         "baseline_path": str(baseline_path.resolve()) if baseline_path else None,
+        "inbound_dir": str(inbound_path.resolve()),
+        "inbound_path": po_meta.get("inbound_path"),
+        "inbound_open_lines": po_meta.get("inbound_open_lines", 0),
+        "po_units_applied": po_meta.get("po_units_applied", 0),
+        "unmatched_po_count": po_meta.get("unmatched_po_count", 0),
         "preorder_lines": len(preorder_rows),
         "preorder_units": pre_units,
         "continue_oos_lines": len(other_rows),
@@ -612,5 +838,7 @@ def run_supplier_orders_report(
             delta_path=paths["latest_delta"].resolve(),
             baseline_path=baseline_path,
             host=os.uname().nodename if hasattr(os, "uname") else "unknown",
+            po_meta=po_meta,
+            unmatched_path=paths["latest_unmatched"].resolve(),
         ),
     }
