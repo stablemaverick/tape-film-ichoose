@@ -434,6 +434,7 @@ def run_upsert(
             "availability_status": clean_text(offer.get("availability_status")),
             "media_release_date": offer.get("media_release_date"),
             "supplier_last_seen_at": now_iso(),
+            "supplier_sku": clean_text(offer.get("supplier_sku")),
             "title": clean_text(offer.get("harmonized_title")) or clean_text(offer.get("title")),
             "format": clean_text(offer.get("harmonized_format")) or clean_text(offer.get("format")),
             "director": clean_text(offer.get("harmonized_director")) or clean_text(offer.get("director")),

@@ -36,10 +36,12 @@ IDENTITY_FIELDS = frozenset({
     "format",
     "director",
     "studio",
+    "supplier_sku",
 })
 
-# Stock sync: prices, qty, availability, last_seen — not release dates (no step-04 harmonization).
-STOCK_SYNC_WHITELIST = frozenset(COMMERCIAL_FIELDS - {"media_release_date"})
+# Stock sync: prices, qty, availability, supplier_sku, last_seen — not release dates
+# (no step-04 harmonization).
+STOCK_SYNC_WHITELIST = frozenset((COMMERCIAL_FIELDS - {"media_release_date"}) | {"supplier_sku"})
 CATALOG_SYNC_WHITELIST = COMMERCIAL_FIELDS | IDENTITY_FIELDS
 
 TMDB_PROTECTED_FIELDS = frozenset({

@@ -21,10 +21,11 @@ from app.rules.catalog_update_rules import (
 
 
 class TestWhitelistSelection:
-    def test_stock_sync_returns_commercial_only(self):
+    def test_stock_sync_returns_commercial_plus_supplier_sku(self):
         wl = get_update_whitelist(existing_only=True)
         assert "supplier_stock_status" in wl
         assert "cost_price" in wl
+        assert "supplier_sku" in wl
         assert "title" not in wl
         assert "format" not in wl
         assert "media_release_date" not in wl
@@ -36,6 +37,7 @@ class TestWhitelistSelection:
         assert "format" in wl
         assert "director" in wl
         assert "studio" in wl
+        assert "supplier_sku" in wl
         assert "media_release_date" in wl
 
 
@@ -53,15 +55,17 @@ class TestFilterPayload:
         assert "tmdb_id" not in result
         assert "film_id" not in result
 
-    def test_stock_sync_strips_identity(self):
+    def test_stock_sync_strips_identity_except_supplier_sku(self):
         payload = {
             "title": "Test",
+            "supplier_sku": "AMSSB10006",
             "cost_price": 10.0,
             "supplier_stock_status": 5,
         }
         result = filter_update_payload(payload, STOCK_SYNC_WHITELIST)
         assert "cost_price" in result
         assert "supplier_stock_status" in result
+        assert "supplier_sku" in result
         assert "title" not in result
 
     def test_stock_sync_strips_media_release_date(self):

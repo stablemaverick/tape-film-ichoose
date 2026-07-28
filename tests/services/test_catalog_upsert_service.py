@@ -127,8 +127,8 @@ def test_missing_target_id_never_triggers_upsert_only_update_for_verified_rows()
     ]
 
 
-def test_stock_sync_filtered_payload_excludes_identity_even_when_offer_has_null_title():
-    """Whitelist must drop title/format/director/studio so PATCH cannot null NOT NULL identity columns."""
+def test_stock_sync_filtered_payload_excludes_core_identity_but_keeps_supplier_sku():
+    """Stock sync keeps supplier_sku but drops title/format/director/studio identity fields."""
     wl = get_update_whitelist(existing_only=True)
     offer_like = {
         "cost_price": 10.0,
@@ -137,6 +137,7 @@ def test_stock_sync_filtered_payload_excludes_identity_even_when_offer_has_null_
         "availability_status": "In Stock",
         "media_release_date": "2025-01-01",
         "supplier_last_seen_at": "2026-01-01T00:00:00+00:00",
+        "supplier_sku": "AMSSB10006",
         "title": None,
         "format": None,
         "director": None,
@@ -150,13 +151,15 @@ def test_stock_sync_filtered_payload_excludes_identity_even_when_offer_has_null_
         "availability_status": offer_like.get("availability_status"),
         "media_release_date": offer_like.get("media_release_date"),
         "supplier_last_seen_at": offer_like.get("supplier_last_seen_at"),
+        "supplier_sku": offer_like.get("supplier_sku"),
         "title": offer_like.get("title"),
         "format": offer_like.get("format"),
         "director": offer_like.get("director"),
         "studio": offer_like.get("studio"),
     }
     filtered = filter_update_payload(update_payload, wl)
-    assert not (set(filtered) & IDENTITY_FIELDS)
+    assert not (set(filtered) & (IDENTITY_FIELDS - {"supplier_sku"}))
+    assert filtered.get("supplier_sku") == "AMSSB10006"
     assert "media_release_date" not in filtered
     assert "cost_price" in filtered
 
