@@ -35,6 +35,7 @@ STOCK_DIFF_COMPARE_KEYS = (
     "availability_status",
     "cost_price",
     "calculated_sale_price",
+    "supplier_sku",
 )
 
 _TRANSIENT_EXC = (
@@ -186,6 +187,8 @@ def _norm_stock_compare(field: str, value: Any) -> Any:
             return 0
     if field == "availability_status":
         return (clean_text(value) if value is not None else "") or ""
+    if field == "supplier_sku":
+        return (clean_text(value) if value is not None else "") or ""
     return value
 
 
@@ -210,6 +213,7 @@ def _catalog_stock_snapshot_from_row(r: Dict[str, Any]) -> Dict[str, Any]:
         "availability_status": r.get("availability_status"),
         "cost_price": r.get("cost_price"),
         "calculated_sale_price": r.get("calculated_sale_price"),
+        "supplier_sku": r.get("supplier_sku"),
         "supplier_last_seen_at": r.get("supplier_last_seen_at"),
     }
 
@@ -327,12 +331,12 @@ def run_upsert(
         return
 
     barcode_select = (
-        "id,barcode,supplier_stock_status,availability_status,cost_price,calculated_sale_price,supplier_last_seen_at"
+        "id,barcode,supplier_stock_status,availability_status,cost_price,calculated_sale_price,supplier_sku,supplier_last_seen_at"
         if existing_only
         else "id,barcode"
     )
     variant_select = (
-        "id,shopify_variant_id,supplier_stock_status,availability_status,cost_price,calculated_sale_price,supplier_last_seen_at"
+        "id,shopify_variant_id,supplier_stock_status,availability_status,cost_price,calculated_sale_price,supplier_sku,supplier_last_seen_at"
         if existing_only
         else "id,shopify_variant_id"
     )

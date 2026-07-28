@@ -164,6 +164,26 @@ def test_stock_sync_filtered_payload_excludes_core_identity_but_keeps_supplier_s
     assert "cost_price" in filtered
 
 
+def test_stock_commercial_fields_differ_includes_supplier_sku():
+    from app.services.catalog_upsert_service import stock_commercial_fields_differ
+
+    snap = {
+        "supplier_stock_status": 1,
+        "availability_status": "supplier_stock",
+        "cost_price": 10.0,
+        "calculated_sale_price": 20.0,
+        "supplier_sku": None,
+    }
+    payload = {
+        "supplier_stock_status": 1,
+        "availability_status": "supplier_stock",
+        "cost_price": 10.0,
+        "calculated_sale_price": 20.0,
+        "supplier_sku": "UHDR95012SB",
+    }
+    assert stock_commercial_fields_differ(snap, payload) is True
+
+
 def test_apply_stock_sync_row_updates_uses_execute_with_retry(monkeypatch):
     """Regression: row updates go through execute_with_retry like production."""
     calls: list[str] = []
