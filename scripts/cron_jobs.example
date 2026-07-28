@@ -34,6 +34,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Default out dir: /srv/ftps/data/tapester/reports/supplier_orders
 # Open-PO uploads (latest *.csv wins): .../supplier_orders/inbound/
 #   CSV headers: order_id,sku,title,qty,unit_cost,line_total,status
+#   Match: fuzzy title only (>= 90% SequenceMatcher); sku column kept for export only
 #   Example template: reports/supplier_orders_inbound.example.csv
 # Override: SUPPLIER_ORDERS_REPORT_DIR / SUPPLIER_ORDERS_INBOUND_DIR in .env
 # Does NOT write inventory to Shopify.

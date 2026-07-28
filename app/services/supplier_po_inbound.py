@@ -2,7 +2,8 @@
 Load weekly open supplier PO CSVs and match lines to Shopify variants.
 
 Latest ``*.csv`` in the inbound folder is a full snapshot of open POs.
-Match order: exact normalized SKU, then unique exact normalized title.
+Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.90).
+SKU is parsed for continuity / unmatched export but is not used for matching.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import csv
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -25,6 +27,8 @@ OPEN_PO_STATUSES = frozenset(
 )
 
 REQUIRED_HEADERS = frozenset({"sku", "title", "qty", "status"})
+
+TITLE_MATCH_MIN_RATIO = 0.90
 
 UNMATCHED_CSV_FIELDS = [
     "order_id",
@@ -75,7 +79,7 @@ class PoInboundSnapshot:
 
 
 def normalize_match_key(value: Any) -> str:
-    """Trim, casefold, collapse whitespace for exact SKU/title matching."""
+    """Trim, casefold, collapse whitespace for title/SKU keying."""
     text = clean_text(value)
     if not text:
         return ""
@@ -96,6 +100,7 @@ def find_latest_inbound_csv(inbound_dir: Path) -> Optional[Path]:
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
+
 
 def find_latest_readable_inbound_csv(
     inbound_dir: Path,
@@ -255,14 +260,75 @@ def load_po_inbound_snapshot(inbound_dir: Optional[Path]) -> PoInboundSnapshot:
     )
 
 
+def title_similarity(a: Any, b: Any) -> float:
+    """Normalized SequenceMatcher ratio between two titles (0.0–1.0)."""
+    ka = normalize_match_key(a)
+    kb = normalize_match_key(b)
+    if not ka or not kb:
+        return 0.0
+    if ka == kb:
+        return 1.0
+    return SequenceMatcher(None, ka, kb).ratio()
+
+
+def find_best_title_match(
+    query_title: str,
+    candidate_title_keys: Iterable[str],
+    *,
+    min_ratio: float = TITLE_MATCH_MIN_RATIO,
+) -> Tuple[Optional[str], float, str]:
+    """
+    Fuzzy-match ``query_title`` against candidate normalized title keys.
+
+    Returns ``(matched_key, score, reason)`` where reason is ``""``,
+    ``"ambiguous"``, or ``"no_match"``.
+
+    If 2+ distinct candidate keys score >= min_ratio, returns ambiguous
+    (no key) rather than picking a winner.
+    """
+    query = normalize_match_key(query_title)
+    if not query:
+        return None, 0.0, "no_match"
+
+    hits: List[Tuple[str, float]] = []
+    for title_key in candidate_title_keys:
+        key = normalize_match_key(title_key) if title_key else ""
+        if not key:
+            continue
+        score = title_similarity(query, key)
+        if score >= min_ratio:
+            hits.append((key, score))
+
+    if not hits:
+        return None, 0.0, "no_match"
+
+    unique_keys = {k for k, _ in hits}
+    best_score = max(s for _, s in hits)
+    if len(unique_keys) > 1:
+        return None, best_score, "ambiguous"
+
+    matched_key = next(iter(unique_keys))
+    return matched_key, best_score, ""
+
+
+def build_shopify_title_keys(variants: Iterable[Dict[str, str]]) -> set[str]:
+    """Collect normalized Shopify product titles from variant identity rows."""
+    out: set[str] = set()
+    for v in variants:
+        title_key = normalize_match_key(v.get("product_title") or v.get("title"))
+        if title_key:
+            out.add(title_key)
+    return out
+
+
 def build_shopify_match_indexes(
     variants: Iterable[Dict[str, str]],
 ) -> Tuple[Dict[str, str], Dict[str, str], set[str]]:
     """
-    Build sku_key -> variant_id and title_key -> variant_id.
+    Legacy helper kept for tests/callers.
 
-    Titles that map to more than one variant_id are recorded in ``ambiguous_titles``
-    and omitted from the title index (SKU-only for those).
+    Returns (by_sku, by_title exact unique, ambiguous exact duplicate titles).
+    PO cover allocation no longer uses SKU; prefer ``build_shopify_title_keys``.
     """
     by_sku: Dict[str, str] = {}
     title_candidates: Dict[str, set[str]] = {}
@@ -296,107 +362,98 @@ def format_po_order_ids(order_ids: Sequence[str], *, max_len: int = 120) -> str:
 
 def allocate_po_cover_for_variant(
     *,
-    sku: str,
     product_title: str,
     shopify_need: int,
-    remaining_sku_qty: Dict[str, int],
     remaining_title_qty: Dict[str, int],
-    by_sku: Dict[str, PoBucket],
     by_title: Dict[str, PoBucket],
-    ambiguous_titles: set[str],
-) -> Tuple[int, str, str]:
+    sku: str = "",  # unused; kept for call-site compatibility
+) -> Tuple[int, str, str, str]:
     """
-    Consume open PO qty against one Shopify variant need.
+    Consume open PO qty against one Shopify variant need via fuzzy title match.
 
-    Returns (open_po_qty_applied, po_match, po_order_ids).
+    Returns (open_po_qty_applied, po_match, po_order_ids, matched_po_title_key).
+    ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (0.90 <= score < 1.0).
     """
+    del sku  # intentionally unused
     if shopify_need <= 0:
-        return 0, "", ""
+        return 0, "", "", ""
 
-    sku_key = normalize_match_key(sku)
-    title_key = normalize_match_key(product_title)
+    candidates = [k for k, qty in remaining_title_qty.items() if qty > 0]
+    matched_key, score, reason = find_best_title_match(product_title, candidates)
+    if not matched_key or reason:
+        return 0, "", "", ""
 
-    if sku_key and remaining_sku_qty.get(sku_key, 0) > 0:
-        available = remaining_sku_qty[sku_key]
-        applied = min(shopify_need, available)
-        remaining_sku_qty[sku_key] = available - applied
-        # Keep title bucket in sync when same lines contribute to both indexes.
-        if title_key and title_key in remaining_title_qty:
-            remaining_title_qty[title_key] = max(0, remaining_title_qty[title_key] - applied)
-        bucket = by_sku.get(sku_key)
-        return applied, "sku", format_po_order_ids(bucket.order_ids if bucket else [])
+    available = remaining_title_qty.get(matched_key, 0)
+    if available <= 0:
+        return 0, "", "", ""
 
-    if (
-        title_key
-        and title_key not in ambiguous_titles
-        and remaining_title_qty.get(title_key, 0) > 0
-    ):
-        available = remaining_title_qty[title_key]
-        applied = min(shopify_need, available)
-        remaining_title_qty[title_key] = available - applied
-        bucket = by_title.get(title_key)
-        return applied, "title", format_po_order_ids(bucket.order_ids if bucket else [])
-
-    return 0, "", ""
+    applied = min(shopify_need, available)
+    remaining_title_qty[matched_key] = available - applied
+    bucket = by_title.get(matched_key)
+    match_label = "title" if score >= 1.0 else "title_fuzzy"
+    return (
+        applied,
+        match_label,
+        format_po_order_ids(bucket.order_ids if bucket else []),
+        matched_key,
+    )
 
 
 def remaining_qty_maps(
     snapshot: PoInboundSnapshot,
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
+    """Return (by_sku qty, by_title qty). SKU map is unused for matching."""
     return (
         {k: b.qty for k, b in snapshot.by_sku.items()},
         {k: b.qty for k, b in snapshot.by_title.items()},
     )
 
 
+def remaining_title_qty_map(snapshot: PoInboundSnapshot) -> Dict[str, int]:
+    return {k: b.qty for k, b in snapshot.by_title.items()}
+
+
 def collect_unmatched_po_lines(
     snapshot: PoInboundSnapshot,
     *,
-    matched_sku_keys: set[str],
     matched_title_keys: set[str],
-    shopify_sku_keys: set[str],
     shopify_title_keys: set[str],
-    ambiguous_titles: set[str],
 ) -> List[Dict[str, Any]]:
     """
-    PO lines that never matched a Shopify variant (or were title-ambiguous).
+    PO lines that never uniquely fuzzy-matched a Shopify title.
 
-    A line is matched if its sku_key is in matched_sku_keys, or (no usable sku match
-    path) its title_key is in matched_title_keys.
+    A line is matched if its title_key was used for cover, or it uniquely
+    fuzzy-matches (>= 0.90) a Shopify title (cover may already be consumed).
+    Ambiguous multi-hit titles are reported as ``ambiguous_title``.
     """
     rows: List[Dict[str, Any]] = []
     for line in snapshot.lines:
-        if line.sku_key and line.sku_key in matched_sku_keys:
-            continue
-        if (
-            line.sku_key
-            and line.sku_key in shopify_sku_keys
-            and line.sku_key in matched_sku_keys
-        ):
-            continue
-        # SKU exists on Shopify but cover may have been fully consumed by another row —
-        # still considered matched for unmatched reporting if SKU is known on Shopify.
-        if line.sku_key and line.sku_key in shopify_sku_keys:
-            continue
-        if (
-            not line.sku_key
-            and line.title_key
-            and line.title_key in matched_title_keys
-        ):
-            continue
-        if (
-            not line.sku_key
-            and line.title_key
-            and line.title_key in shopify_title_keys
-            and line.title_key not in ambiguous_titles
-        ):
+        if line.title_key and line.title_key in matched_title_keys:
             continue
 
-        reason = "no_match"
-        if line.title_key and line.title_key in ambiguous_titles and (
-            not line.sku_key or line.sku_key not in shopify_sku_keys
-        ):
-            reason = "ambiguous_title"
+        if not line.title_key:
+            rows.append(
+                {
+                    "order_id": line.order_id,
+                    "sku": line.sku,
+                    "title": line.title,
+                    "qty": line.qty,
+                    "unit_cost": line.unit_cost,
+                    "line_total": line.line_total,
+                    "status": line.status,
+                    "reason": "no_match",
+                }
+            )
+            continue
+
+        _key, _score, reason = find_best_title_match(line.title, shopify_title_keys)
+        if reason == "":
+            # Unique fuzzy/exact match to a Shopify title.
+            continue
+        if reason == "ambiguous":
+            match_reason = "ambiguous_title"
+        else:
+            match_reason = "no_match"
         rows.append(
             {
                 "order_id": line.order_id,
@@ -406,7 +463,7 @@ def collect_unmatched_po_lines(
                 "unit_cost": line.unit_cost,
                 "line_total": line.line_total,
                 "status": line.status,
-                "reason": reason,
+                "reason": match_reason,
             }
         )
     return rows
