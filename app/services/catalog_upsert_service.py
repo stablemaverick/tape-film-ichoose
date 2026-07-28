@@ -274,7 +274,7 @@ def fetch_all_offers(
         q = (
             supabase.table(table)
             .select(
-                "supplier,barcode,shopify_variant_id,cost_price,calculated_sale_price,availability_status,supplier_stock_status,active,media_type,source_priority,media_release_date,format,studio,director,title,harmonized_title,harmonized_format,harmonized_director,harmonized_studio,harmonized_from_supplier,harmonized_at,shopify_product_id"
+                "supplier,barcode,shopify_variant_id,supplier_sku,cost_price,calculated_sale_price,availability_status,supplier_stock_status,active,media_type,source_priority,media_release_date,format,studio,director,title,harmonized_title,harmonized_format,harmonized_director,harmonized_studio,harmonized_from_supplier,harmonized_at,shopify_product_id"
             )
             .range(offset, offset + page_size - 1)
         )
