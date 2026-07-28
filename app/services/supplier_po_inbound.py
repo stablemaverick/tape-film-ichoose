@@ -97,6 +97,35 @@ def find_latest_inbound_csv(inbound_dir: Path) -> Optional[Path]:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
 
+def find_latest_readable_inbound_csv(
+    inbound_dir: Path,
+) -> Tuple[Optional[Path], Optional[Path], Optional[str]]:
+    """
+    Return the newest readable CSV, plus info about the latest unreadable one.
+    """
+    if not inbound_dir.is_dir():
+        return None, None, None
+    files = sorted(
+        (p for p in inbound_dir.glob("*.csv") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not files:
+        return None, None, None
+    first_unreadable: Optional[Path] = None
+    first_err: Optional[str] = None
+    for path in files:
+        try:
+            with path.open("rb"):
+                pass
+            return path, first_unreadable, first_err
+        except (OSError, PermissionError) as exc:
+            if first_unreadable is None:
+                first_unreadable = path
+                first_err = str(exc)
+            continue
+    return None, first_unreadable, first_err
+
 
 def _safe_int(value: Any, default: int = 0) -> int:
     if value is None or value == "":
@@ -189,17 +218,32 @@ def load_po_inbound_snapshot(inbound_dir: Optional[Path]) -> PoInboundSnapshot:
             skipped_status=0,
             parse_errors=[],
         )
-    path = find_latest_inbound_csv(inbound_dir)
+    path, unreadable_path, unreadable_err = find_latest_readable_inbound_csv(inbound_dir)
     if path is None:
+        parse_errors: List[str] = []
+        if unreadable_path is not None:
+            parse_errors.append(
+                f"{unreadable_path.name}: unreadable ({unreadable_err or 'permission denied'})"
+            )
         return PoInboundSnapshot(
             path=None,
             lines=[],
             by_sku={},
             by_title={},
             skipped_status=0,
-            parse_errors=[],
+            parse_errors=parse_errors,
         )
-    lines, errors, skipped = parse_po_csv(path)
+    try:
+        lines, errors, skipped = parse_po_csv(path)
+    except (OSError, PermissionError) as exc:
+        return PoInboundSnapshot(
+            path=path,
+            lines=[],
+            by_sku={},
+            by_title={},
+            skipped_status=0,
+            parse_errors=[f"{path.name}: unreadable ({exc})"],
+        )
     by_sku, by_title = aggregate_po_lines(lines)
     return PoInboundSnapshot(
         path=path,

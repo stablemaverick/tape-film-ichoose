@@ -15,6 +15,7 @@ from app.services.supplier_po_inbound import (
     build_shopify_match_indexes,
     collect_unmatched_po_lines,
     find_latest_inbound_csv,
+    find_latest_readable_inbound_csv,
     is_open_po_status,
     load_po_inbound_snapshot,
     normalize_match_key,
@@ -69,6 +70,32 @@ def test_find_latest_inbound_csv(tmp_path: Path):
     newer.touch()
     assert find_latest_inbound_csv(tmp_path) == newer
     assert load_po_inbound_snapshot(tmp_path / "missing").path is None
+
+
+def test_find_latest_readable_inbound_csv_skips_unreadable(tmp_path: Path):
+    older = tmp_path / "older.csv"
+    newer = tmp_path / "newer.csv"
+    older.write_text("order_id,sku,title,qty,unit_cost,line_total,status\n", encoding="utf-8")
+    newer.write_text("order_id,sku,title,qty,unit_cost,line_total,status\n", encoding="utf-8")
+    older.touch()
+    newer.touch()
+
+    # Simulate unreadable newest file by monkeypatching Path.open.
+    original_open = Path.open
+
+    def fake_open(self, *args, **kwargs):
+        if self == newer:
+            raise PermissionError("permission denied")
+        return original_open(self, *args, **kwargs)
+
+    from unittest.mock import patch
+
+    with patch.object(Path, "open", fake_open):
+        readable, unreadable, err = find_latest_readable_inbound_csv(tmp_path)
+
+    assert readable == older
+    assert unreadable == newer
+    assert "permission denied" in (err or "")
 
 
 def test_build_indexes_marks_ambiguous_titles():
@@ -267,3 +294,29 @@ def test_unmatched_po_when_sku_unknown(tmp_path: Path):
     assert len(unmatched) == 1
     assert unmatched[0]["reason"] == "no_match"
     assert remaining_title["mystery title"] == 2
+
+
+def test_load_po_inbound_snapshot_unreadable_file_does_not_crash(tmp_path: Path):
+    inbound = tmp_path / "inbound"
+    inbound.mkdir()
+    path = inbound / "orders.csv"
+    path.write_text(
+        "order_id,sku,title,qty,unit_cost,line_total,status\n"
+        "1,SKU,Title,1,1,1,Pre-Order\n",
+        encoding="utf-8",
+    )
+    original_open = Path.open
+
+    def fake_open(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError("permission denied")
+        return original_open(self, *args, **kwargs)
+
+    from unittest.mock import patch
+
+    with patch.object(Path, "open", fake_open):
+        snapshot = load_po_inbound_snapshot(inbound)
+
+    assert snapshot.path is None
+    assert snapshot.lines == []
+    assert snapshot.parse_errors
