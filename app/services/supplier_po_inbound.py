@@ -381,41 +381,48 @@ def allocate_po_cover_for_variant(
     remaining_title_qty: Dict[str, int],
     by_title: Dict[str, PoBucket],
     sku: str = "",  # unused; kept for call-site compatibility
-) -> Tuple[int, str, str, str, str]:
+) -> Tuple[int, str, str, str, str, int]:
     """
     Consume open PO qty against one Shopify variant need via fuzzy title match.
 
     Returns
-    ``(open_po_qty_applied, po_match, po_order_ids, matched_po_title_key, po_title)``.
+    ``(qty_applied, po_match, po_order_ids, matched_po_title_key, po_title, open_po_qty)``.
+
+    ``qty_applied`` is how much of the PO is used to cover this Shopify need.
+    ``open_po_qty`` is the full open-PO total for the matched title (all inbound lines).
     ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (min_ratio <= score < 1.0).
     ``po_title`` is the inbound CSV title text for the matched bucket.
     """
     del sku  # intentionally unused
     if shopify_need <= 0:
-        return 0, "", "", "", ""
+        return 0, "", "", "", "", 0
 
     candidates = [k for k, qty in remaining_title_qty.items() if qty > 0]
     matched_key, score, reason = find_best_title_match(product_title, candidates)
     if not matched_key or reason:
-        return 0, "", "", "", ""
+        return 0, "", "", "", "", 0
 
     available = remaining_title_qty.get(matched_key, 0)
     if available <= 0:
-        return 0, "", "", "", ""
+        return 0, "", "", "", "", 0
 
     applied = min(shopify_need, available)
     remaining_title_qty[matched_key] = available - applied
     bucket = by_title.get(matched_key)
     match_label = "title" if score >= 1.0 else "title_fuzzy"
     po_title = ""
-    if bucket and bucket.lines:
-        po_title = bucket.lines[0].title or ""
+    open_po_total = 0
+    if bucket:
+        open_po_total = bucket.qty
+        if bucket.lines:
+            po_title = bucket.lines[0].title or ""
     return (
         applied,
         match_label,
         format_po_order_ids(bucket.order_ids if bucket else []),
         matched_key,
         po_title,
+        open_po_total,
     )
 
 

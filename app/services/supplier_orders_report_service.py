@@ -614,7 +614,7 @@ def apply_po_cover_to_candidates(
     Net open PO qty against Shopify need via fuzzy title match.
 
     Fully covered titles (still_needed == 0) stay on the report so matches are
-    visible via open_po_qty / po_match.
+    visible via open_po_qty (full matched PO total) / po_title / po_match.
     """
     snapshot = load_po_inbound_snapshot(inbound_dir)
     shopify_title_keys = build_shopify_title_keys(all_variants)
@@ -626,17 +626,19 @@ def apply_po_cover_to_candidates(
     covered_units = 0
 
     for c in candidates:
-        open_po_qty, po_match, po_order_ids, matched_po_key, po_title = allocate_po_cover_for_variant(
-            product_title=c.product_title,
-            shopify_need=c.shopify_need,
-            remaining_title_qty=remaining_title,
-            by_title=snapshot.by_title,
+        applied, po_match, po_order_ids, matched_po_key, po_title, open_po_qty = (
+            allocate_po_cover_for_variant(
+                product_title=c.product_title,
+                shopify_need=c.shopify_need,
+                remaining_title_qty=remaining_title,
+                by_title=snapshot.by_title,
+            )
         )
         if matched_po_key:
             matched_title_keys.add(matched_po_key)
 
-        still_needed = max(0, c.shopify_need - open_po_qty)
-        covered_units += open_po_qty
+        still_needed = max(0, c.shopify_need - applied)
+        covered_units += applied
         # Classify on Shopify need so fully PO-covered lines still appear.
         reason = classify_supplier_need(
             is_preorder=c.is_preorder,

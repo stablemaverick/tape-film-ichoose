@@ -219,17 +219,17 @@ def test_allocate_title_only_ignores_sku():
     by_title["film on order"].add(line)
     remaining_title = {"film on order": 4}
 
-    applied, match, oids, matched_key, po_title = allocate_po_cover_for_variant(
+    applied, match, oids, matched_key, po_title, open_po_qty = allocate_po_cover_for_variant(
         sku="ABC",
         product_title="Completely Different Shopify Title",
         shopify_need=3,
         remaining_title_qty=remaining_title,
         by_title=by_title,
     )
-    assert (applied, match, matched_key, po_title) == (0, "", "", "")
+    assert (applied, match, matched_key, po_title, open_po_qty) == (0, "", "", "", 0)
     assert remaining_title["film on order"] == 4
 
-    applied2, match2, oids2, matched_key2, po_title2 = allocate_po_cover_for_variant(
+    applied2, match2, oids2, matched_key2, po_title2, open_po_qty2 = allocate_po_cover_for_variant(
         sku="DIFFERENT-SKU",
         product_title="Film On Order",
         shopify_need=3,
@@ -238,6 +238,7 @@ def test_allocate_title_only_ignores_sku():
     )
     assert (applied2, match2, matched_key2) == (3, "title", "film on order")
     assert po_title2 == "Film On Order"
+    assert open_po_qty2 == 4  # full PO bucket, not just applied
     assert "10" in oids2
     assert remaining_title["film on order"] == 1
 
@@ -262,13 +263,14 @@ def test_allocate_fuzzy_title_near_match():
     by_title[line.title_key].add(line)
     remaining_title = {line.title_key: 10}
 
-    applied, match, oids, matched_key, po_title = allocate_po_cover_for_variant(
+    applied, match, oids, matched_key, po_title, open_po_qty = allocate_po_cover_for_variant(
         product_title="28 Days Later Limited Edition Steelbook 4K Ultra HD",
         shopify_need=4,
         remaining_title_qty=remaining_title,
         by_title=by_title,
     )
     assert applied == 4
+    assert open_po_qty == 10  # full PO total
     assert match == "title_fuzzy"
     assert matched_key == line.title_key
     assert po_title == line.title
@@ -482,7 +484,7 @@ def test_apply_po_cover_fuzzy_title_from_inbound(tmp_path: Path):
     assert other == []
     assert len(pre) == 1
     assert pre[0].shopify_need == 3
-    assert pre[0].open_po_qty == 3
+    assert pre[0].open_po_qty == 10  # full PO total on matched title
     assert pre[0].qty_to_order == 0
     assert pre[0].po_match == "title_fuzzy"
     assert "28 Days Later" in pre[0].po_title
@@ -572,20 +574,56 @@ def test_fully_covered_by_po_stays_on_report_with_zero_still_needed(tmp_path: Pa
     assert other == []
     assert len(pre) == 1
     assert pre[0].shopify_need == 8
-    assert pre[0].open_po_qty == 8
+    assert pre[0].open_po_qty == 10  # full open PO total on matched title
     assert pre[0].qty_to_order == 0
     assert pre[0].po_match == "title"
     assert pre[0].po_title == "Project Hail Mary"
     assert meta["po_units_applied"] == 8
-    assert classify_supplier_need(
-        is_preorder=True,
-        policy="CONTINUE",
-        backorder=False,
-        available=-8,
-        committed=8,
-        on_hand=0,
-        need=8,
-    ) == "preorder"
+
+
+def test_open_po_qty_shows_full_bucket_when_need_is_smaller(tmp_path: Path):
+    inbound = tmp_path / "inbound"
+    inbound.mkdir()
+    (inbound / "open_pos.csv").write_text(
+        "order_id,sku,title,qty,unit_cost,line_total,status\n"
+        "504655,2NDBR4305,Sexy Beast Limited Edition 4K Ultra HD + Blu-Ray 4K UHD,5,1,5,Pre-Order\n",
+        encoding="utf-8",
+    )
+    candidates = [
+        _ShopifyNeedCandidate(
+            product_title="Sexy Beast Limited Edition 4K Ultra HD + Blu-Ray",
+            barcode="1",
+            sku="1",
+            shopify_need=1,
+            committed=1,
+            available=-1,
+            on_hand=0,
+            incoming=0,
+            inventory_policy="CONTINUE",
+            is_preorder=True,
+            pre_order_metafield=True,
+            backorder_metafield=False,
+            media_release_date="2026-12-01",
+            product_status="ACTIVE",
+            shopify_product_id="gid://shopify/Product/1",
+            shopify_variant_id="gid://shopify/ProductVariant/1",
+        )
+    ]
+    variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/1",
+            "sku": "1",
+            "product_title": "Sexy Beast Limited Edition 4K Ultra HD + Blu-Ray",
+        }
+    ]
+    pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
+    assert other == []
+    assert len(pre) == 1
+    assert pre[0].shopify_need == 1
+    assert pre[0].open_po_qty == 5
+    assert pre[0].qty_to_order == 0
+    assert pre[0].po_match == "title_fuzzy"
+    assert meta["po_units_applied"] == 1
 
 
 def test_unmatched_po_when_title_unknown(tmp_path: Path):
