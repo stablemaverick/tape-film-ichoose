@@ -604,7 +604,7 @@ def apply_po_cover_to_candidates(
     inbound_dir: Optional[Path],
 ) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
     """
-    Net open PO qty against Shopify need via fuzzy title match (>= 0.85).
+    Net open PO qty against Shopify need via fuzzy title match (>= 0.75).
 
     Returns (preorder_rows, other_rows, po_meta).
     """

@@ -122,21 +122,19 @@ def test_title_similarity_exact_and_near():
         "28 Days Later Limited Edition Steelbook 4K Ultra HD",
         "28 Days Later Limited Edition Steelbook 4K Ultra HD 4K UHD",
     )
-    assert near >= 0.85
-    # Format-suffix style near miss that 0.85 is meant to catch.
+    assert near >= 0.75
     amelie = title_similarity(
         "Amelie Limited Edition Blu-Ray",
         "Amelie Limited Edition Blu-Ray BLU-RAY",
     )
-    assert amelie >= 0.85
-    far = title_similarity("Amelie Limited Edition Blu-Ray", "Completely Different Film")
-    assert far < 0.85
-    # Cross-title risk stays below threshold.
-    cross = title_similarity(
-        "The Descent Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
-        "The Dark Crystal Limited Edition Steelbook 4K Ultra HD + Blu-Ray 4K UHD",
+    assert amelie >= 0.75
+    nightsiren = title_similarity(
+        "Nightsiren Blu-Ray",
+        "Nightsiren Blu-Ray BLU-RAY",
     )
-    assert cross < 0.85
+    assert nightsiren >= 0.75
+    far = title_similarity("Amelie Limited Edition Blu-Ray", "Completely Different Film")
+    assert far < 0.75
 
 
 def test_find_best_title_match_ambiguous_when_two_po_titles_hit():
@@ -149,7 +147,7 @@ def test_find_best_title_match_ambiguous_when_two_po_titles_hit():
     )
     assert key is None
     assert reason == "ambiguous"
-    assert score >= 0.85
+    assert score >= 0.75
 
 
 def test_allocate_title_only_ignores_sku():

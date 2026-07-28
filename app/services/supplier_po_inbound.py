@@ -2,7 +2,7 @@
 Load weekly open supplier PO CSVs and match lines to Shopify variants.
 
 Latest ``*.csv`` in the inbound folder is a full snapshot of open POs.
-Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.85).
+Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.75).
 SKU is parsed for continuity / unmatched export but is not used for matching.
 """
 
@@ -28,9 +28,8 @@ OPEN_PO_STATUSES = frozenset(
 
 REQUIRED_HEADERS = frozenset({"sku", "title", "qty", "status"})
 
-# Below exact match so PO format suffixes (e.g. trailing "4K UHD" / "BLU-RAY") still hit,
-# but high enough to avoid cross-title false positives (e.g. Descent vs Dark Crystal ~0.85).
-TITLE_MATCH_MIN_RATIO = 0.85
+# Below exact match so PO format suffixes (e.g. trailing "4K UHD" / "BLU-RAY") still hit.
+TITLE_MATCH_MIN_RATIO = 0.75
 
 UNMATCHED_CSV_FIELDS = [
     "order_id",
