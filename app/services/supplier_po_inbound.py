@@ -2,7 +2,7 @@
 Load weekly open supplier PO CSVs and match lines to Shopify variants.
 
 Latest ``*.csv`` in the inbound folder is a full snapshot of open POs.
-Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.90).
+Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.85).
 SKU is parsed for continuity / unmatched export but is not used for matching.
 """
 
@@ -28,7 +28,9 @@ OPEN_PO_STATUSES = frozenset(
 
 REQUIRED_HEADERS = frozenset({"sku", "title", "qty", "status"})
 
-TITLE_MATCH_MIN_RATIO = 0.90
+# Below exact match so PO format suffixes (e.g. trailing "4K UHD" / "BLU-RAY") still hit,
+# but high enough to avoid cross-title false positives (e.g. Descent vs Dark Crystal ~0.85).
+TITLE_MATCH_MIN_RATIO = 0.85
 
 UNMATCHED_CSV_FIELDS = [
     "order_id",
@@ -372,7 +374,7 @@ def allocate_po_cover_for_variant(
     Consume open PO qty against one Shopify variant need via fuzzy title match.
 
     Returns (open_po_qty_applied, po_match, po_order_ids, matched_po_title_key).
-    ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (0.90 <= score < 1.0).
+    ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (min_ratio <= score < 1.0).
     """
     del sku  # intentionally unused
     if shopify_need <= 0:
@@ -423,7 +425,7 @@ def collect_unmatched_po_lines(
     PO lines that never uniquely fuzzy-matched a Shopify title.
 
     A line is matched if its title_key was used for cover, or it uniquely
-    fuzzy-matches (>= 0.90) a Shopify title (cover may already be consumed).
+    fuzzy-matches (>= TITLE_MATCH_MIN_RATIO) a Shopify title (cover may already be consumed).
     Ambiguous multi-hit titles are reported as ``ambiguous_title``.
     """
     rows: List[Dict[str, Any]] = []
