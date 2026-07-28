@@ -771,6 +771,9 @@ def format_slack_summary(
         )
     else:
         lines.append("PO inbound: none (qty_to_order = Shopify need only)")
+    parse_errors = meta.get("inbound_parse_errors") or []
+    if parse_errors:
+        lines.append(f"⚠️ inbound issues: {'; '.join(str(e) for e in parse_errors[:3])}")
     if unmatched_path is not None:
         lines.append(f"unmatched po csv: {unmatched_path}")
     if baseline_path is None:

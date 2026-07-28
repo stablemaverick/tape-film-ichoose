@@ -35,6 +35,9 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Open-PO uploads (latest *.csv wins): .../supplier_orders/inbound/
 #   CSV headers: order_id,sku,title,qty,unit_cost,line_total,status
 #   Match: fuzzy title (>=75%; clear-win >=90% when multiple hits); sku kept for export only
+#   Inbound perms: dir should be setgid staff + default ACL so FTP 600 uploads stay group-readable
+#     sudo setfacl -m u:simonpittaway:rwx,g:staff:rwx .../inbound
+#     sudo setfacl -d -m u:simonpittaway:rw,g:staff:rw,o::r .../inbound
 #   Example template: reports/supplier_orders_inbound.example.csv
 # Override: SUPPLIER_ORDERS_REPORT_DIR / SUPPLIER_ORDERS_INBOUND_DIR in .env
 # Does NOT write inventory to Shopify.

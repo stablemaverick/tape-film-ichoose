@@ -72,6 +72,46 @@ fi
 chmod 755 "${REPORT_DIR}" 2>/dev/null || true
 chmod 775 "${INBOUND_DIR}" 2>/dev/null || true
 
+# FTP uploads often land as mode 600 owned by the vsftpd mapped uid. Cron runs as
+# simonpittaway (in group staff). Prefer group/world-readable inbound CSVs so PO
+# netting works. Default ACL on inbound/ (set once on the VM) is the durable fix;
+# this is a best-effort repair each run.
+fix_inbound_csv_permissions() {
+  local f mode owner
+  shopt -s nullglob
+  for f in "${INBOUND_DIR}"/*.csv; do
+    [[ -e "${f}" ]] || continue
+    if [[ -r "${f}" ]]; then
+      chmod ug+rw,o+r "${f}" 2>/dev/null || true
+      continue
+    fi
+    echo "[${JOB_LABEL}] WARN: inbound CSV not readable: ${f}" >&2
+    # Try without sudo first (works if we own it).
+    if chmod ug+rw,o+r "${f}" 2>/dev/null && [[ -r "${f}" ]]; then
+      echo "[${JOB_LABEL}] fixed mode on ${f}" >&2
+      continue
+    fi
+    # Optional passwordless sudo for the FTP-mapped owner files.
+    if command -v sudo >/dev/null 2>&1; then
+      if sudo -n chmod ug+rw,o+r "${f}" 2>/dev/null && [[ -r "${f}" ]]; then
+        echo "[${JOB_LABEL}] fixed mode via sudo on ${f}" >&2
+        continue
+      fi
+      if sudo -n chown "$(id -u):staff" "${f}" 2>/dev/null \
+        && sudo -n chmod ug+rw,o+r "${f}" 2>/dev/null \
+        && [[ -r "${f}" ]]; then
+        echo "[${JOB_LABEL}] fixed owner+mode via sudo on ${f}" >&2
+        continue
+      fi
+    fi
+    mode="$(stat -c '%a %U:%G' "${f}" 2>/dev/null || echo '?')"
+    echo "[${JOB_LABEL}] ERROR: cannot read inbound CSV ${f} (${mode})" >&2
+    "${NOTIFY}" "⚠️ ${JOB_LABEL} inbound CSV unreadable host=${HOST} file=$(basename "${f}") perms=${mode} — PO netting may be skipped. Fix: chmod ug+rw,o+r or set default ACL on ${INBOUND_DIR}"
+  done
+  shopt -u nullglob
+}
+fix_inbound_csv_permissions
+
 cd "${ROOT}"
 echo "[${JOB_LABEL}] START out_dir=${REPORT_DIR} inbound_dir=${INBOUND_DIR}" >&2
 "${NOTIFY}" "📦 ${JOB_LABEL} START host=${HOST} out_dir=${REPORT_DIR} inbound=${INBOUND_DIR}"
