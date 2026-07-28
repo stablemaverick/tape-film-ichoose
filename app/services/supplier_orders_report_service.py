@@ -20,12 +20,13 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
 from app.clients.shopify_client import ShopifyClient
-from app.helpers.text_helpers import clean_text
+from app.clients.supabase_client import get_client
+from app.helpers.text_helpers import chunked, clean_text
 from app.services.shopify_inventory_settings_audit import parse_shopify_bool_metafield
 from app.services.supplier_po_inbound import (
     allocate_po_cover_for_variant,
@@ -36,6 +37,9 @@ from app.services.supplier_po_inbound import (
     remaining_qty_maps,
     write_unmatched_csv,
 )
+
+# Lasgo does not provide SKU in feed; report/PO matching uses Moovies product codes only.
+_MOOVIES_SUPPLIERS = ("moovies", "Moovies")
 
 PRODUCTS_QUERY = """
 query SupplierOrdersReport($cursor: String, $locId: ID!) {
@@ -491,6 +495,7 @@ def collect_shopify_need_candidates(
                     {
                         "shopify_variant_id": variant_id,
                         "sku": sku,
+                        "barcode": barcode,
                         "product_title": title,
                     }
                 )
@@ -526,6 +531,72 @@ def collect_shopify_need_candidates(
             time.sleep(sleep_s)
 
     return candidates, all_variants
+
+
+def fetch_moovies_supplier_sku_by_barcode(
+    barcodes: Iterable[str],
+    *,
+    env_file: str = ".env",
+) -> Dict[str, str]:
+    """
+    Map barcode -> Moovies catalog_items.supplier_sku.
+
+    Only Moovies rows are considered (Lasgo has no SKU in feed). When multiple
+    Moovies rows share a barcode, the first non-empty supplier_sku wins.
+    """
+    wanted = sorted({clean_text(b) or "" for b in barcodes if clean_text(b)})
+    if not wanted:
+        return {}
+
+    client = get_client(env_file)
+    out: Dict[str, str] = {}
+    for batch in chunked(wanted, 200):
+        resp = (
+            client.table("catalog_items")
+            .select("barcode,supplier_sku,supplier")
+            .in_("barcode", batch)
+            .in_("supplier", list(_MOOVIES_SUPPLIERS))
+            .execute()
+        )
+        for row in resp.data or []:
+            barcode = clean_text(row.get("barcode")) or ""
+            sku = clean_text(row.get("supplier_sku")) or ""
+            if not barcode or not sku or barcode in out:
+                continue
+            out[barcode] = sku
+    return out
+
+
+def enrich_with_moovies_catalog_sku(
+    candidates: List[_ShopifyNeedCandidate],
+    all_variants: List[Dict[str, str]],
+    sku_by_barcode: Dict[str, str],
+) -> Tuple[int, int]:
+    """
+    Replace Shopify variant.sku with Moovies catalog supplier_sku when barcode matches.
+
+    Also updates all_variants so PO inbound SKU matching uses Moovies product codes.
+    Returns (candidates_updated, variants_updated).
+    """
+    cand_n = 0
+    for c in candidates:
+        mapped = sku_by_barcode.get(c.barcode or "")
+        if not mapped:
+            continue
+        if mapped != c.sku:
+            cand_n += 1
+        c.sku = mapped
+
+    var_n = 0
+    for v in all_variants:
+        barcode = clean_text(v.get("barcode")) or ""
+        mapped = sku_by_barcode.get(barcode)
+        if not mapped:
+            continue
+        if mapped != (v.get("sku") or ""):
+            var_n += 1
+        v["sku"] = mapped
+    return cand_n, var_n
 
 
 def apply_po_cover_to_candidates(
@@ -632,6 +703,7 @@ def collect_supplier_order_rows(
     today: Optional[date] = None,
     sleep_s: float = 0.2,
     inbound_dir: Optional[Path] = None,
+    env_file: str = ".env",
 ) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
     """Return (preorder_rows, other_oversell_rows, po_meta)."""
     candidates, all_variants = collect_shopify_need_candidates(
@@ -640,7 +712,17 @@ def collect_supplier_order_rows(
         today=today,
         sleep_s=sleep_s,
     )
-    return apply_po_cover_to_candidates(candidates, all_variants, inbound_dir)
+    all_barcodes = [
+        *(c.barcode for c in candidates if c.barcode),
+        *(clean_text(v.get("barcode")) or "" for v in all_variants if v.get("barcode")),
+    ]
+    sku_by_barcode = fetch_moovies_supplier_sku_by_barcode(all_barcodes, env_file=env_file)
+    enrich_with_moovies_catalog_sku(candidates, all_variants, sku_by_barcode)
+    preorder_rows, other_rows, po_meta = apply_po_cover_to_candidates(
+        candidates, all_variants, inbound_dir
+    )
+    po_meta["moovies_sku_lookups"] = len(sku_by_barcode)
+    return preorder_rows, other_rows, po_meta
 
 
 def format_slack_summary(
@@ -677,6 +759,8 @@ def format_slack_summary(
         f"  continue/oversell: {len(other_rows)} lines / {other_units} units",
     ]
     meta = po_meta or {}
+    if meta.get("moovies_sku_lookups") is not None:
+        lines.append(f"Moovies catalog SKUs resolved: {meta.get('moovies_sku_lookups', 0)}")
     if meta.get("inbound_path"):
         lines.append(
             f"PO inbound: {Path(meta['inbound_path']).name} "
@@ -770,6 +854,7 @@ def run_supplier_orders_report(
         client,
         location_id,
         inbound_dir=inbound_path,
+        env_file=str(path),
     )
     combined: List[SupplierOrderRow] = []
     seen = set()

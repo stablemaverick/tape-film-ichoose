@@ -8,6 +8,7 @@ from app.services.supplier_orders_report_service import (
     _ShopifyNeedCandidate,
     apply_po_cover_to_candidates,
     classify_supplier_need,
+    enrich_with_moovies_catalog_sku,
 )
 from app.services.supplier_po_inbound import (
     allocate_po_cover_for_variant,
@@ -170,6 +171,122 @@ def test_allocate_prefers_sku_then_title():
     )
     assert (applied2, match2) == (2, "title")
     assert remaining_title["film b"] == 0
+
+
+def test_enrich_with_moovies_catalog_sku_replaces_shopify_sku():
+    candidates = [
+        _ShopifyNeedCandidate(
+            product_title="Project Hail Mary",
+            barcode="5051888281123",
+            sku="5051888281123",  # Shopify often stores barcode as sku
+            shopify_need=2,
+            committed=2,
+            available=-2,
+            on_hand=0,
+            incoming=0,
+            inventory_policy="CONTINUE",
+            is_preorder=True,
+            pre_order_metafield=True,
+            backorder_metafield=False,
+            media_release_date="2026-12-01",
+            product_status="ACTIVE",
+            shopify_product_id="gid://shopify/Product/1",
+            shopify_variant_id="gid://shopify/ProductVariant/1",
+        ),
+        _ShopifyNeedCandidate(
+            product_title="Lasgo Only Title",
+            barcode="999",
+            sku="999",
+            shopify_need=1,
+            committed=1,
+            available=-1,
+            on_hand=0,
+            incoming=0,
+            inventory_policy="CONTINUE",
+            is_preorder=False,
+            pre_order_metafield=False,
+            backorder_metafield=True,
+            media_release_date="",
+            product_status="ACTIVE",
+            shopify_product_id="gid://shopify/Product/2",
+            shopify_variant_id="gid://shopify/ProductVariant/2",
+        ),
+    ]
+    variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/1",
+            "sku": "5051888281123",
+            "barcode": "5051888281123",
+            "product_title": "Project Hail Mary",
+        },
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/2",
+            "sku": "999",
+            "barcode": "999",
+            "product_title": "Lasgo Only Title",
+        },
+    ]
+    cand_n, var_n = enrich_with_moovies_catalog_sku(
+        candidates,
+        variants,
+        {"5051888281123": "AMSSB10006"},
+    )
+    assert cand_n == 1
+    assert var_n == 1
+    assert candidates[0].sku == "AMSSB10006"
+    assert variants[0]["sku"] == "AMSSB10006"
+    # No Moovies map → leave Shopify sku (Lasgo has none in catalog)
+    assert candidates[1].sku == "999"
+    assert variants[1]["sku"] == "999"
+
+
+def test_po_cover_uses_enriched_moovies_sku(tmp_path: Path):
+    inbound = tmp_path / "inbound"
+    inbound.mkdir()
+    (inbound / "open_pos.csv").write_text(
+        "order_id,sku,title,qty,unit_cost,line_total,status\n"
+        "1,AMSSB10006,Project Hail Mary,5,1,5,Pre-Order\n",
+        encoding="utf-8",
+    )
+    candidates = [
+        _ShopifyNeedCandidate(
+            product_title="Project Hail Mary",
+            barcode="5051888281123",
+            sku="5051888281123",
+            shopify_need=8,
+            committed=8,
+            available=-8,
+            on_hand=0,
+            incoming=0,
+            inventory_policy="CONTINUE",
+            is_preorder=True,
+            pre_order_metafield=True,
+            backorder_metafield=False,
+            media_release_date="2026-12-01",
+            product_status="ACTIVE",
+            shopify_product_id="gid://shopify/Product/1",
+            shopify_variant_id="gid://shopify/ProductVariant/1",
+        )
+    ]
+    variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/1",
+            "sku": "5051888281123",
+            "barcode": "5051888281123",
+            "product_title": "Project Hail Mary",
+        }
+    ]
+    enrich_with_moovies_catalog_sku(
+        candidates, variants, {"5051888281123": "AMSSB10006"}
+    )
+    pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
+    assert other == []
+    assert len(pre) == 1
+    assert pre[0].sku == "AMSSB10006"
+    assert pre[0].open_po_qty == 5
+    assert pre[0].qty_to_order == 3
+    assert pre[0].po_match == "sku"
+    assert meta["unmatched_po_count"] == 0
 
 
 def test_apply_po_cover_nets_still_needed(tmp_path: Path):
