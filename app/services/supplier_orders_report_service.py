@@ -84,6 +84,7 @@ CSV_FIELDS = [
     "qty_to_order",
     "shopify_need",
     "open_po_qty",
+    "po_title",
     "po_match",
     "po_order_ids",
     "committed",
@@ -107,6 +108,7 @@ DELTA_CSV_FIELDS = [
     "qty_to_order",
     "shopify_need",
     "open_po_qty",
+    "po_title",
     "po_match",
     "po_order_ids",
     "product_title",
@@ -133,6 +135,7 @@ class SupplierOrderRow:
     qty_to_order: int
     shopify_need: int
     open_po_qty: int
+    po_title: str
     po_match: str
     po_order_ids: str
     committed: int
@@ -157,6 +160,7 @@ class SupplierOrderDeltaRow:
     qty_to_order: int
     shopify_need: int
     open_po_qty: int
+    po_title: str
     po_match: str
     po_order_ids: str
     product_title: str
@@ -316,6 +320,7 @@ def load_previous_qty_by_variant(path: Path) -> Dict[str, Dict[str, Any]]:
                 "qty_to_order": _safe_int(row.get("qty_to_order")),
                 "shopify_need": _safe_int(row.get("shopify_need"), _safe_int(row.get("qty_to_order"))),
                 "open_po_qty": _safe_int(row.get("open_po_qty")),
+                "po_title": row.get("po_title") or "",
                 "po_match": row.get("po_match") or "",
                 "po_order_ids": row.get("po_order_ids") or "",
                 "product_title": row.get("product_title") or "",
@@ -394,6 +399,7 @@ def compute_daily_delta(
                 qty_to_order=r.qty_to_order,
                 shopify_need=r.shopify_need,
                 open_po_qty=r.open_po_qty,
+                po_title=r.po_title,
                 po_match=r.po_match,
                 po_order_ids=r.po_order_ids,
                 product_title=r.product_title,
@@ -426,6 +432,7 @@ def compute_daily_delta(
                 qty_to_order=0,
                 shopify_need=_safe_int(prev.get("shopify_need")),
                 open_po_qty=_safe_int(prev.get("open_po_qty")),
+                po_title=str(prev.get("po_title") or ""),
                 po_match=str(prev.get("po_match") or ""),
                 po_order_ids=str(prev.get("po_order_ids") or ""),
                 product_title=str(prev.get("product_title") or ""),
@@ -604,9 +611,10 @@ def apply_po_cover_to_candidates(
     inbound_dir: Optional[Path],
 ) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
     """
-    Net open PO qty against Shopify need via fuzzy title match (>= 0.75).
+    Net open PO qty against Shopify need via fuzzy title match.
 
-    Returns (preorder_rows, other_rows, po_meta).
+    Fully covered titles (still_needed == 0) stay on the report so matches are
+    visible via open_po_qty / po_match.
     """
     snapshot = load_po_inbound_snapshot(inbound_dir)
     shopify_title_keys = build_shopify_title_keys(all_variants)
@@ -618,17 +626,18 @@ def apply_po_cover_to_candidates(
     covered_units = 0
 
     for c in candidates:
-        open_po_qty, po_match, po_order_ids, matched_po_title = allocate_po_cover_for_variant(
+        open_po_qty, po_match, po_order_ids, matched_po_key, po_title = allocate_po_cover_for_variant(
             product_title=c.product_title,
             shopify_need=c.shopify_need,
             remaining_title_qty=remaining_title,
             by_title=snapshot.by_title,
         )
-        if matched_po_title:
-            matched_title_keys.add(matched_po_title)
+        if matched_po_key:
+            matched_title_keys.add(matched_po_key)
 
         still_needed = max(0, c.shopify_need - open_po_qty)
         covered_units += open_po_qty
+        # Classify on Shopify need so fully PO-covered lines still appear.
         reason = classify_supplier_need(
             is_preorder=c.is_preorder,
             policy=c.inventory_policy,
@@ -636,7 +645,7 @@ def apply_po_cover_to_candidates(
             available=c.available,
             committed=c.committed,
             on_hand=c.on_hand,
-            need=still_needed,
+            need=c.shopify_need,
         )
         if not reason:
             continue
@@ -647,6 +656,7 @@ def apply_po_cover_to_candidates(
             qty_to_order=still_needed,
             shopify_need=c.shopify_need,
             open_po_qty=open_po_qty,
+            po_title=po_title,
             po_match=po_match,
             po_order_ids=po_order_ids,
             committed=c.committed,
@@ -788,7 +798,11 @@ def format_slack_summary(
         lines.append("outstanding top:")
         for r in sorted(combined, key=lambda x: -x.qty_to_order)[:top_n]:
             bc = r.barcode or "(no barcode)"
-            po_bit = f", po={r.open_po_qty}" if r.open_po_qty else ""
+            po_bit = ""
+            if r.open_po_qty:
+                po_bit = f", po={r.open_po_qty}"
+                if r.po_title:
+                    po_bit += f" [{r.po_title[:40]}]"
             lines.append(f"  {r.qty_to_order}× {bc} — {r.product_title[:70]}{po_bit}")
     return "\n".join(lines)
 

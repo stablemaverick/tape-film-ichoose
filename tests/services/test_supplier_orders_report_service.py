@@ -27,6 +27,7 @@ def _row(
         qty_to_order=qty,
         shopify_need=qty,
         open_po_qty=0,
+        po_title="",
         po_match="",
         po_order_ids="",
         committed=qty,

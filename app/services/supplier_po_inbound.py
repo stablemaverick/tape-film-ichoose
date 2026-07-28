@@ -30,6 +30,9 @@ REQUIRED_HEADERS = frozenset({"sku", "title", "qty", "status"})
 
 # Below exact match so PO format suffixes (e.g. trailing "4K UHD" / "BLU-RAY") still hit.
 TITLE_MATCH_MIN_RATIO = 0.75
+# When 2+ titles clear the floor, only accept a clear winner (avoids Event Horizon→Annihilation etc.).
+TITLE_MATCH_CLEAR_WIN_RATIO = 0.90
+TITLE_MATCH_CLEAR_WIN_MARGIN = 0.05
 
 UNMATCHED_CSV_FIELDS = [
     "order_id",
@@ -277,6 +280,8 @@ def find_best_title_match(
     candidate_title_keys: Iterable[str],
     *,
     min_ratio: float = TITLE_MATCH_MIN_RATIO,
+    clear_win_ratio: float = TITLE_MATCH_CLEAR_WIN_RATIO,
+    clear_win_margin: float = TITLE_MATCH_CLEAR_WIN_MARGIN,
 ) -> Tuple[Optional[str], float, str]:
     """
     Fuzzy-match ``query_title`` against candidate normalized title keys.
@@ -284,32 +289,40 @@ def find_best_title_match(
     Returns ``(matched_key, score, reason)`` where reason is ``""``,
     ``"ambiguous"``, or ``"no_match"``.
 
-    If 2+ distinct candidate keys score >= min_ratio, returns ambiguous
-    (no key) rather than picking a winner.
+    - 0 hits >= min_ratio → no_match
+    - 1 hit >= min_ratio → that key
+    - 2+ hits → accept the top score only when it is a clear win
+      (score >= clear_win_ratio and leads the runner-up by clear_win_margin);
+      otherwise ambiguous (blocks weak cross-title hits like Descent→Dark Crystal).
     """
     query = normalize_match_key(query_title)
     if not query:
         return None, 0.0, "no_match"
 
-    hits: List[Tuple[str, float]] = []
+    best_by_key: Dict[str, float] = {}
     for title_key in candidate_title_keys:
         key = normalize_match_key(title_key) if title_key else ""
         if not key:
             continue
         score = title_similarity(query, key)
-        if score >= min_ratio:
-            hits.append((key, score))
+        if score < min_ratio:
+            continue
+        prev = best_by_key.get(key)
+        if prev is None or score > prev:
+            best_by_key[key] = score
 
-    if not hits:
+    if not best_by_key:
         return None, 0.0, "no_match"
 
-    unique_keys = {k for k, _ in hits}
-    best_score = max(s for _, s in hits)
-    if len(unique_keys) > 1:
-        return None, best_score, "ambiguous"
+    ranked = sorted(best_by_key.items(), key=lambda item: (-item[1], item[0]))
+    best_key, best_score = ranked[0]
+    if len(ranked) == 1:
+        return best_key, best_score, ""
 
-    matched_key = next(iter(unique_keys))
-    return matched_key, best_score, ""
+    second_score = ranked[1][1]
+    if best_score >= clear_win_ratio and (best_score - second_score) >= clear_win_margin:
+        return best_key, best_score, ""
+    return None, best_score, "ambiguous"
 
 
 def build_shopify_title_keys(variants: Iterable[Dict[str, str]]) -> set[str]:
@@ -368,35 +381,41 @@ def allocate_po_cover_for_variant(
     remaining_title_qty: Dict[str, int],
     by_title: Dict[str, PoBucket],
     sku: str = "",  # unused; kept for call-site compatibility
-) -> Tuple[int, str, str, str]:
+) -> Tuple[int, str, str, str, str]:
     """
     Consume open PO qty against one Shopify variant need via fuzzy title match.
 
-    Returns (open_po_qty_applied, po_match, po_order_ids, matched_po_title_key).
+    Returns
+    ``(open_po_qty_applied, po_match, po_order_ids, matched_po_title_key, po_title)``.
     ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (min_ratio <= score < 1.0).
+    ``po_title`` is the inbound CSV title text for the matched bucket.
     """
     del sku  # intentionally unused
     if shopify_need <= 0:
-        return 0, "", "", ""
+        return 0, "", "", "", ""
 
     candidates = [k for k, qty in remaining_title_qty.items() if qty > 0]
     matched_key, score, reason = find_best_title_match(product_title, candidates)
     if not matched_key or reason:
-        return 0, "", "", ""
+        return 0, "", "", "", ""
 
     available = remaining_title_qty.get(matched_key, 0)
     if available <= 0:
-        return 0, "", "", ""
+        return 0, "", "", "", ""
 
     applied = min(shopify_need, available)
     remaining_title_qty[matched_key] = available - applied
     bucket = by_title.get(matched_key)
     match_label = "title" if score >= 1.0 else "title_fuzzy"
+    po_title = ""
+    if bucket and bucket.lines:
+        po_title = bucket.lines[0].title or ""
     return (
         applied,
         match_label,
         format_po_order_ids(bucket.order_ids if bucket else []),
         matched_key,
+        po_title,
     )
 
 

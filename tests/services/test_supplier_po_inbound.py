@@ -150,6 +150,56 @@ def test_find_best_title_match_ambiguous_when_two_po_titles_hit():
     assert score >= 0.75
 
 
+def test_find_best_title_match_clear_win_picks_best():
+    key, score, reason = find_best_title_match(
+        "Troy Limited Edition 4K Ultra HD",
+        {
+            "troy limited edition 4k ultra hd 4k uhd",
+            "misery limited edition 4k ultra hd 4k uhd",
+            "thief limited edition 4k ultra hd 4k uhd",
+        },
+    )
+    assert reason == ""
+    assert key == "troy limited edition 4k ultra hd 4k uhd"
+    assert score >= 0.90
+
+
+def test_find_best_title_match_rejects_weak_cross_title_hits():
+    # Event Horizon must not take Annihilation's PO.
+    key, score, reason = find_best_title_match(
+        "Event Horizon Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        {
+            "annihilation limited edition steelbook 4k ultra hd + blu-ray 4k uhd",
+            "barbarian limited edition steelbook 4k ultra hd + blu-ray 4k uhd",
+        },
+    )
+    assert key is None
+    assert reason == "ambiguous"
+
+    # Jason X must not take Troy's PO.
+    key2, _, reason2 = find_best_title_match(
+        "Jason X Limited Edition 4K Ultra HD",
+        {
+            "troy limited edition 4k ultra hd 4k uhd",
+            "misery limited edition 4k ultra hd 4k uhd",
+        },
+    )
+    assert key2 is None
+    assert reason2 == "ambiguous"
+
+    # Descent must not take Dark Crystal's PO.
+    key3, _, reason3 = find_best_title_match(
+        "The Descent Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        {
+            "the dark crystal limited edition steelbook 4k ultra hd + blu-ray 4k uhd",
+            "disclosure day limited edition steelbook 4k ultra hd + blu-ray 4k uhd",
+            "barbarian limited edition steelbook 4k ultra hd + blu-ray 4k uhd",
+        },
+    )
+    assert key3 is None
+    assert reason3 == "ambiguous"
+
+
 def test_allocate_title_only_ignores_sku():
     from app.services.supplier_po_inbound import PoBucket, SupplierPoLine
 
@@ -169,17 +219,17 @@ def test_allocate_title_only_ignores_sku():
     by_title["film on order"].add(line)
     remaining_title = {"film on order": 4}
 
-    applied, match, oids, matched_key = allocate_po_cover_for_variant(
+    applied, match, oids, matched_key, po_title = allocate_po_cover_for_variant(
         sku="ABC",
         product_title="Completely Different Shopify Title",
         shopify_need=3,
         remaining_title_qty=remaining_title,
         by_title=by_title,
     )
-    assert (applied, match, matched_key) == (0, "", "")
+    assert (applied, match, matched_key, po_title) == (0, "", "", "")
     assert remaining_title["film on order"] == 4
 
-    applied2, match2, oids2, matched_key2 = allocate_po_cover_for_variant(
+    applied2, match2, oids2, matched_key2, po_title2 = allocate_po_cover_for_variant(
         sku="DIFFERENT-SKU",
         product_title="Film On Order",
         shopify_need=3,
@@ -187,6 +237,7 @@ def test_allocate_title_only_ignores_sku():
         by_title=by_title,
     )
     assert (applied2, match2, matched_key2) == (3, "title", "film on order")
+    assert po_title2 == "Film On Order"
     assert "10" in oids2
     assert remaining_title["film on order"] == 1
 
@@ -211,7 +262,7 @@ def test_allocate_fuzzy_title_near_match():
     by_title[line.title_key].add(line)
     remaining_title = {line.title_key: 10}
 
-    applied, match, oids, matched_key = allocate_po_cover_for_variant(
+    applied, match, oids, matched_key, po_title = allocate_po_cover_for_variant(
         product_title="28 Days Later Limited Edition Steelbook 4K Ultra HD",
         shopify_need=4,
         remaining_title_qty=remaining_title,
@@ -220,6 +271,7 @@ def test_allocate_fuzzy_title_near_match():
     assert applied == 4
     assert match == "title_fuzzy"
     assert matched_key == line.title_key
+    assert po_title == line.title
     assert "413866" in oids
     assert remaining_title[line.title_key] == 6
 
@@ -427,9 +479,14 @@ def test_apply_po_cover_fuzzy_title_from_inbound(tmp_path: Path):
     ]
     pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
     assert meta["po_units_applied"] == 3
-    # Fully covered — drops from buy list.
-    assert pre == []
     assert other == []
+    assert len(pre) == 1
+    assert pre[0].shopify_need == 3
+    assert pre[0].open_po_qty == 3
+    assert pre[0].qty_to_order == 0
+    assert pre[0].po_match == "title_fuzzy"
+    assert "28 Days Later" in pre[0].po_title
+    assert "4K UHD" in pre[0].po_title
 
 
 def test_sku_match_alone_does_not_cover(tmp_path: Path):
@@ -476,7 +533,7 @@ def test_sku_match_alone_does_not_cover(tmp_path: Path):
     assert meta["unmatched_po_count"] == 1
 
 
-def test_fully_covered_by_po_drops_from_buy_list(tmp_path: Path):
+def test_fully_covered_by_po_stays_on_report_with_zero_still_needed(tmp_path: Path):
     inbound = tmp_path / "inbound"
     inbound.mkdir()
     (inbound / "open_pos.csv").write_text(
@@ -512,8 +569,13 @@ def test_fully_covered_by_po_drops_from_buy_list(tmp_path: Path):
         }
     ]
     pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
-    assert pre == []
     assert other == []
+    assert len(pre) == 1
+    assert pre[0].shopify_need == 8
+    assert pre[0].open_po_qty == 8
+    assert pre[0].qty_to_order == 0
+    assert pre[0].po_match == "title"
+    assert pre[0].po_title == "Project Hail Mary"
     assert meta["po_units_applied"] == 8
     assert classify_supplier_need(
         is_preorder=True,
@@ -522,8 +584,8 @@ def test_fully_covered_by_po_drops_from_buy_list(tmp_path: Path):
         available=-8,
         committed=8,
         on_hand=0,
-        need=0,
-    ) is None
+        need=8,
+    ) == "preorder"
 
 
 def test_unmatched_po_when_title_unknown(tmp_path: Path):
