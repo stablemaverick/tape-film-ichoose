@@ -31,7 +31,9 @@ Shopify is only a sales channel (`release_shopify_listings`), never the canonica
 | [architecture-and-data-flow.md](./architecture-and-data-flow.md) | Diagrams + data flow |
 | [phase-3a-rollback.md](./phase-3a-rollback.md) | Drop foundation tables |
 | [phase-3b-dual-write-plan.md](./phase-3b-dual-write-plan.md) | Dual-write plan |
-| [phase-3b-verification-report.md](./phase-3b-verification-report.md) | Verification + reconciliation + assumptions |
+| [temporary-test-environment.md](./temporary-test-environment.md) | Temp Supabase / local Docker validation kit |
+| [production-deployment-checklist.md](./production-deployment-checklist.md) | Later production steps (do not use yet) |
+| Synthetic seed + verify | `scripts/inventory_intelligence_test/` |
 
 ## Feature flags (default off)
 
