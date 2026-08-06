@@ -32,9 +32,13 @@ def main() -> int:
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args()
 
+    repo = _repo_root()
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+
     env_path = args.env_file
     if not os.path.isabs(env_path):
-        env_path = str(_repo_root() / env_path)
+        env_path = str(repo / env_path)
     load_dotenv(env_path, override=True)
 
     from supabase import create_client
