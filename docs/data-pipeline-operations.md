@@ -56,8 +56,34 @@ Supplier files (.xlsx / .xls / .csv / .txt)
 | `staging_lasgo_raw` | Raw Lasgo supplier data (Blu-ray only). Inserted per batch. |
 | `staging_shopify_raw` | Raw Shopify product/variant data pulled via GraphQL. |
 | `staging_supplier_offers` | Normalised, harmonised supplier offers. One row per `(supplier, barcode)`. |
-| `catalog_items` | Master product catalog. One row per `(supplier, barcode)` or `(supplier, shopify_variant_id)`. Enriched with TMDB metadata. Linked to `films` via `film_id`. |
+| `catalog_items` | Master product catalog. One row per `(supplier, barcode)` or `(supplier, shopify_variant_id)`. Enriched with TMDB metadata. Linked to `films` via `film_id`. **Still the operational SoT for agent availability until a later consumer switch.** |
 | `films` | Canonical film entities for the agent. One row per unique `tmdb_id`. |
+| Inventory foundation | `suppliers`, `release_variants`, `release_shopify_listings`, `variant_identifiers`, `tape_inventory_levels`, `supplier_offers`, `supplier_offer_observations`, `supplier_sku_resolutions`, `purchase_orders`, `purchase_order_lines`, `inventory_events`. Dual-writes behind `INVENTORY_DUAL_WRITE_*` (default off). See `docs/inventory-intelligence/`. |
+
+### Inventory intelligence notes (ops)
+
+- Canonical release entity is `release_variants` (independent of Shopify).
+- Supplier stock must never be written into Shopify inventory quantities.
+- Preorder / supplier availability must never create positive TAPE on-hand via supplier paths.
+- Failed or stale supplier feeds must not mass-mark offers unavailable; age freshness instead.
+- Keep `po_incoming_confirmed` and `shopify_incoming_reported` separate — do not auto-sum.
+- Supplier-only releases need no `tape_inventory_levels` row.
+- Verify: `scripts/observability/inventory_dual_write_verify.py`
+- Rollback: `docs/inventory-intelligence/phase-3a-rollback.md`
+
+**Environment variables (dual-write; unused until enabled):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `INVENTORY_DUAL_WRITE_ENABLED` | `0` | Master dual-write switch |
+| `INVENTORY_DUAL_WRITE_SHOPIFY` | `0` | Releases + channels + tape levels |
+| `INVENTORY_DUAL_WRITE_SUPPLIER` | `0` | Supplier offers / observations |
+| `INVENTORY_DUAL_WRITE_PO` | `0` | Purchase order persistence |
+| `INVENTORY_CREATE_SUPPLIER_ONLY_RELEASES` | `1` | Create supplier_only releases when unmatched |
+| `AVAILABILITY_FEED_FRESH_MAX_HOURS` | `36` | Freshness: fresh window |
+| `AVAILABILITY_FEED_AGING_MAX_HOURS` | `72` | Freshness: aging window |
+| `SUPPLIER_RESOLUTION_AUTO_ACCEPT_MIN_CONFIDENCE` | `0.95` | Auto-accept SKU→release matches |
+| `INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX` | `500` | Cap detailed Shopify qty fetches per sync |
 
 ---
 

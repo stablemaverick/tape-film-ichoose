@@ -33,7 +33,7 @@ No schema objects were created or altered during introspection.
 Confirmed absent from the OpenAPI catalog (no PostgREST paths):
 
 - `purchase_orders`, `purchase_order_lines`
-- `tape_inventory_levels`, `sellable_variants`, `variant_identifiers`
+- `tape_inventory_levels`, `release_variants`, `variant_identifiers`
 - `supplier_offers` (canonical), `supplier_offer_observations`, `supplier_sku_resolutions`
 - `inventory_events`, `sales_order_lines`, `demand_events`, `editions`
 - Any materialised availability view

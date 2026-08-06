@@ -232,6 +232,7 @@ def normalize_from_moovies(
     )
 
     print(f"Upserted {len(out)} staging_supplier_offers rows from Moovies batch {batch_id}")
+    _maybe_dual_write_supplier_offers(supabase, out, supplier="moovies", batch_id=batch_id)
     return len(out)
 
 
@@ -309,7 +310,40 @@ def normalize_from_lasgo(
     )
 
     print(f"Upserted {len(out)} staging_supplier_offers rows from Lasgo batch {batch_id}")
+    _maybe_dual_write_supplier_offers(supabase, out, supplier="lasgo", batch_id=batch_id)
     return len(out)
+
+
+def _maybe_dual_write_supplier_offers(
+    supabase: Any,
+    rows: List[Dict[str, Any]],
+    *,
+    supplier: str,
+    batch_id: str,
+) -> None:
+    """Phase 3b dual-write — no-op unless INVENTORY_DUAL_WRITE_* flags are enabled."""
+    try:
+        from app.config.inventory_dual_write import load_inventory_dual_write_flags
+        from app.services.supplier_offer_dual_write_service import dual_write_supplier_offers
+
+        flags = load_inventory_dual_write_flags()
+        if not flags.supplier_enabled:
+            return
+        stats = dual_write_supplier_offers(
+            supabase,
+            rows,
+            flags=flags,
+            pipeline_failed_or_stale=False,
+            source_feed_at=now_iso(),
+            pipeline_completed_at=now_iso(),
+        )
+        print(f"[inventory dual-write] supplier={supplier} batch={batch_id} stats={stats}")
+    except Exception as exc:
+        # Dual-write must not break the operational normalize path.
+        print(
+            f"WARN: inventory dual-write failed for {supplier} batch={batch_id}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def parse_float(value: Any) -> Optional[float]:

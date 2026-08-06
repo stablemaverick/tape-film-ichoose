@@ -693,6 +693,7 @@ def apply_po_cover_to_candidates(
         "po_units_applied": covered_units,
         "unmatched_po_lines": unmatched,
         "unmatched_po_count": len(unmatched),
+        "inbound_po_lines": list(snapshot.lines),
     }
     return preorder_rows, other_rows, po_meta
 
@@ -831,6 +832,39 @@ def resolve_inbound_dir(
     return out_dir / "inbound"
 
 
+def _maybe_dual_write_purchase_orders(
+    *,
+    env_file: str,
+    po_meta: Dict[str, Any],
+    location_id: str,
+) -> Dict[str, Any]:
+    """Phase 3b dual-write — no-op unless flags enabled. Never blocks the report."""
+    try:
+        from app.config.inventory_dual_write import load_inventory_dual_write_flags
+        from app.services.purchase_order_dual_write_service import dual_write_purchase_orders
+
+        flags = load_inventory_dual_write_flags()
+        if not flags.po_enabled:
+            return {"enabled": False}
+        lines = po_meta.get("inbound_po_lines") or []
+        if not lines:
+            return {"enabled": True, "lines": 0, "skipped": "no_inbound_lines"}
+        load_dotenv(env_file)
+        supabase = get_client()
+        stats = dual_write_purchase_orders(
+            supabase,
+            lines,
+            supplier_label="moovies",
+            source_filename=po_meta.get("inbound_path"),
+            location_id=location_id,
+            flags=flags,
+        )
+        return stats
+    except Exception as exc:
+        print(f"WARN: inventory dual-write (PO) failed: {exc}")
+        return {"enabled": True, "error": str(exc)}
+
+
 def run_supplier_orders_report(
     *,
     env_file: str = ".env",
@@ -897,6 +931,12 @@ def run_supplier_orders_report(
     write_unmatched_csv(paths["unmatched"], po_meta.get("unmatched_po_lines") or [])
     write_unmatched_csv(paths["latest_unmatched"], po_meta.get("unmatched_po_lines") or [])
 
+    dual_write_stats = _maybe_dual_write_purchase_orders(
+        env_file=str(path),
+        po_meta=po_meta,
+        location_id=location_id,
+    )
+
     pre_units = sum(r.qty_to_order for r in preorder_rows)
     other_units = sum(r.qty_to_order for r in other_rows)
     new_or_up = [d for d in delta_rows if d.change in ("new", "increased")]
@@ -922,6 +962,7 @@ def run_supplier_orders_report(
         "delta_new_or_increased_units": sum(d.qty_delta for d in new_or_up),
         "delta_cleared_lines": len(cleared),
         "delta_cleared_units": sum(-d.qty_delta for d in cleared),
+        "inventory_dual_write": dual_write_stats,
         "paths": {k: str(v.resolve()) for k, v in paths.items()},
         "slack_text": format_slack_summary(
             preorder_rows=preorder_rows,

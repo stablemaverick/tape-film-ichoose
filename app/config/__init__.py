@@ -1,0 +1,1 @@
+"""Inventory intelligence configuration helpers."""

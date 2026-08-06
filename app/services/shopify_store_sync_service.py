@@ -742,7 +742,16 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                             "id", cid
                         ).execute()
 
-        return {
+            dual_write_stats = _maybe_dual_write_shopify_releases(
+                supabase,
+                client,
+                shop=shop,
+                rows=rows,
+            )
+        else:
+            dual_write_stats = {"enabled": False, "skipped_dry_run": True}
+
+        result = {
             "status": "ok",
             "job": "shopify_store_sync",
             "shop": shop,
@@ -753,7 +762,9 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
             "tracks_inventory_true_count": track_true,
             "dry_run": dry_run,
             "db_writes": not dry_run,
+            "inventory_dual_write": dual_write_stats,
         }
+        return result
     except Exception as exc:
         if supabase is not None and not dry_run:
             try:
@@ -763,3 +774,43 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
             except Exception:
                 pass
         raise
+
+
+def _maybe_dual_write_shopify_releases(
+    supabase: Client,
+    client: ShopifyClient,
+    *,
+    shop: str,
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Phase 3b dual-write — no-op unless flags enabled. Never blocks store sync."""
+    try:
+        from app.config.inventory_dual_write import load_inventory_dual_write_flags
+        from app.services.shopify_release_dual_write_service import (
+            dual_write_shopify_listings_to_releases,
+            fetch_inventory_levels_for_variants,
+        )
+
+        flags = load_inventory_dual_write_flags()
+        if not flags.shopify_enabled:
+            return {"enabled": False}
+        location_id = os.getenv("SHOPIFY_INVENTORY_LOCATION_ID", "").strip()
+        levels: Dict[str, Dict[str, int]] = {}
+        if location_id:
+            # Cap detailed level fetches to avoid long store-sync runs on first enable.
+            sample = rows[: min(len(rows), int(os.getenv("INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX", "500")))]
+            levels = fetch_inventory_levels_for_variants(
+                client, location_id=location_id, variant_rows=sample
+            )
+        stats = dual_write_shopify_listings_to_releases(
+            supabase,
+            rows,
+            shop=shop,
+            location_id=location_id or None,
+            inventory_levels_by_variant=levels,
+            flags=flags,
+        )
+        return stats
+    except Exception as exc:
+        print(f"WARN: inventory dual-write (shopify) failed: {exc}")
+        return {"enabled": True, "error": str(exc)}

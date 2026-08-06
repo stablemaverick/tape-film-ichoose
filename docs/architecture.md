@@ -125,6 +125,37 @@ These boundaries are enforced in:
 - Shopify cost: GBP cost → AUD conversion → landed markup (no margin, no GST)
 - Tape Film products: price and cost taken as-is from Shopify (already in AUD)
 
+### Inventory intelligence (Phase 3a/3b foundation)
+
+Additive tables and pure rules separate TAPE inventory, supplier availability,
+purchase orders, and history. Canonical entity is **`release_variants`**
+(not Shopify-dependent). See `docs/inventory-intelligence/`.
+
+**Three identities:**
+
+| Identity | Key |
+|---|---|
+| Canonical release | `release_variants.id` |
+| Supplier offer | `(supplier_id, supplier_sku)` |
+| Shopify channel | `(shop, shopify_variant_id)` via `release_shopify_listings` |
+
+**Source ownership:**
+
+| Fact class | Owner | Must not |
+|---|---|---|
+| TAPE on_hand / committed / available / shopify_incoming_reported | Shopify | Be written by supplier feeds |
+| po_incoming_confirmed | Purchase orders | Be auto-summed with Shopify incoming |
+| Supplier availability / cost / qty | Supplier feeds | Update Shopify inventory quantities |
+| Derived availability / recommendations | Read model / future AI | Overwrite source fact tables |
+
+**Phase 3b dual-writes** are hooked into normalize / store sync / PO report but
+default **OFF** (`INVENTORY_DUAL_WRITE_*`). Agent ranking and admin lookup still
+read `catalog_items`.
+
+Incoming inventory keeps `po_incoming_confirmed` and `shopify_incoming_reported`
+as separate facts. A single derived incoming figure requires explicit
+reconciliation (`prefer_po_when_both` default).
+
 ---
 
 ## Pipeline Modes
@@ -171,7 +202,13 @@ app/
 │   ├── tmdb_rules            # Match-once logic, enrichment filters
 │   ├── supplier_precedence   # Priority ranking, best-offer selection
 │   ├── pricing_rules         # Margins, conversion, sale price calc
-│   └── content_classification_rules  # film | tv | unknown (health + TMDB routing)
+│   ├── content_classification_rules  # film | tv | unknown (health + TMDB routing)
+│   ├── availability_rules    # Supplier status normalisation + freshness
+│   ├── inventory_invariant_rules  # Ownership + reconciliation invariants
+│   └── unified_availability_contract  # Future read-model shape (not wired)
+│
+├── config/
+│   └── inventory_dual_write.py   # Feature flags (default OFF)
 │
 ├── clients/                  # External service wrappers (I/O boundary)
 │   ├── supabase_client       # Retry-aware DB client, pagination
