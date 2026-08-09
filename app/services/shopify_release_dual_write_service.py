@@ -23,8 +23,36 @@ from app.rules.inventory_invariant_rules import (
     validate_tape_inventory_levels,
 )
 from app.services.inventory_events_service import build_event_dedupe_key, emit_inventory_event
+from app.services.shopify_inventory_settings_audit import is_gift_card_product_type
+from app.services.shopify_release_mapping import classify_shopify_listing_mapping
 
 logger = logging.getLogger(__name__)
+
+# Exact product_title matches (casefold) for known non-release Shopify products.
+# Needed because store-sync snapshots often have empty product_type for gift cards.
+SHOPIFY_II_EXACT_EXCLUDED_PRODUCT_TITLES = frozenset(
+    {
+        "tape! film gift card",
+        "test film - hell or high water (not for sale)",
+    }
+)
+
+
+def shopify_ii_dual_write_exclusion_reason(row: Mapping[str, Any]) -> Optional[str]:
+    """
+    Deterministic non-release exclusions for Shopify → II dual-write.
+
+    Prefer Shopify product_type (established gift-card convention). Fall back only to
+    exact known product titles from production audit — never broad substring filters.
+    """
+    if is_gift_card_product_type(row.get("product_type")):
+        return "gift_card_product_type"
+    title = (clean_text(row.get("product_title") or row.get("title")) or "").casefold()
+    if title in SHOPIFY_II_EXACT_EXCLUDED_PRODUCT_TITLES:
+        if "gift card" in title:
+            return "gift_card_exact_title"
+        return "test_product_exact_title"
+    return None
 
 
 def _now_iso() -> str:
@@ -86,6 +114,10 @@ def dual_write_shopify_listings_to_releases(
         "channels_upserted": 0,
         "tape_levels_upserted": 0,
         "events_inserted": 0,
+        "skipped_ambiguous": 0,
+        "skipped_non_release": 0,
+        "skipped_non_release_by_reason": {},
+        "created_new_release": 0,
         "warnings": 0,
         "errors": 0,
     }
@@ -97,9 +129,16 @@ def dual_write_shopify_listings_to_releases(
     )
     levels = inventory_levels_by_variant or {}
     now = _now_iso()
+    skip_reasons: Dict[str, int] = {}
 
     for row in listing_rows:
         try:
+            exclude_reason = shopify_ii_dual_write_exclusion_reason(row)
+            if exclude_reason:
+                stats["skipped_non_release"] += 1
+                skip_reasons[exclude_reason] = skip_reasons.get(exclude_reason, 0) + 1
+                continue
+
             vid = clean_text(row.get("shopify_variant_id"))
             if not vid:
                 continue
@@ -107,7 +146,7 @@ def dual_write_shopify_listings_to_releases(
             title = clean_text(row.get("product_title") or row.get("title"))
             catalog_item_id = clean_text(row.get("catalog_item_id"))
 
-            release_id = _resolve_or_create_release_for_shopify(
+            release_id, created_new = _resolve_or_create_release_for_shopify(
                 supabase,
                 shop=shop,
                 shopify_variant_id=vid,
@@ -117,7 +156,18 @@ def dual_write_shopify_listings_to_releases(
                 catalog_item_id=catalog_item_id,
                 now=now,
             )
+            if release_id is None:
+                stats["skipped_ambiguous"] += 1
+                stats["warnings"] += 1
+                logger.warning(
+                    "shopify dual-write skipped ambiguous mapping variant=%s barcode=%s",
+                    vid,
+                    barcode,
+                )
+                continue
             stats["releases_upserted"] += 1
+            if created_new:
+                stats["created_new_release"] += 1
 
             channel = {
                 "release_variant_id": release_id,
@@ -254,6 +304,7 @@ def dual_write_shopify_listings_to_releases(
                 row.get("shopify_variant_id"),
             )
 
+    stats["skipped_non_release_by_reason"] = skip_reasons
     logger.info("shopify release dual-write complete: %s", stats)
     return stats
 
@@ -268,49 +319,39 @@ def _resolve_or_create_release_for_shopify(
     title: Optional[str],
     catalog_item_id: Optional[str],
     now: str,
-) -> str:
-    existing = (
-        supabase.table("release_shopify_listings")
-        .select("release_variant_id")
-        .eq("shop", shop)
-        .eq("shopify_variant_id", shopify_variant_id)
-        .limit(1)
-        .execute()
-    )
-    if existing.data:
-        rid = existing.data[0]["release_variant_id"]
-        supabase.table("release_variants").update(
-            {
-                "publication_status": "published",
-                "catalog_item_id": catalog_item_id,
-                "primary_barcode": barcode,
-                "title": title,
-                "updated_at": now,
-            }
-        ).eq("id", rid).execute()
-        return rid
+) -> tuple[Optional[str], bool]:
+    """
+    Resolve Shopify variant → release_variant.
 
-    if barcode:
-        by_bc = (
-            supabase.table("release_variants")
-            .select("id")
-            .eq("primary_barcode", barcode)
-            .eq("active", True)
-            .limit(2)
-            .execute()
-        )
-        rows = by_bc.data or []
-        if len(rows) == 1:
-            rid = rows[0]["id"]
-            supabase.table("release_variants").update(
-                {
-                    "publication_status": "published",
-                    "catalog_item_id": catalog_item_id,
-                    "title": title,
-                    "updated_at": now,
-                }
-            ).eq("id", rid).execute()
-            return rid
+    Returns (release_variant_id|None, created_new).
+    Ambiguous barcode/catalog mapping → (None, False); never guess.
+    Unmapped curated Shopify products may create a new release_variant (II inbound only).
+    """
+    _ = shopify_product_id  # reserved for future channel metadata
+    classified = classify_shopify_listing_mapping(
+        supabase,
+        shop=shop,
+        shopify_variant_id=shopify_variant_id,
+        barcode=barcode,
+        catalog_item_id=catalog_item_id,
+    )
+    if classified.status == "ambiguous_barcode":
+        return None, False
+
+    if classified.release_variant_id:
+        rid = classified.release_variant_id
+        update_payload: Dict[str, Any] = {
+            "publication_status": "published",
+            "updated_at": now,
+        }
+        if catalog_item_id:
+            update_payload["catalog_item_id"] = catalog_item_id
+        if barcode:
+            update_payload["primary_barcode"] = barcode
+        if title:
+            update_payload["title"] = title
+        supabase.table("release_variants").update(update_payload).eq("id", rid).execute()
+        return rid, False
 
     payload = {
         "catalog_item_id": catalog_item_id,
@@ -322,7 +363,7 @@ def _resolve_or_create_release_for_shopify(
         "updated_at": now,
     }
     ins = supabase.table("release_variants").insert(payload).execute()
-    return (ins.data or [{}])[0]["id"]
+    return (ins.data or [{}])[0].get("id"), True
 
 
 def _ensure_barcode_identifier(

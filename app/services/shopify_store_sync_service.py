@@ -789,16 +789,23 @@ def _maybe_dual_write_shopify_releases(
         from app.services.shopify_release_dual_write_service import (
             dual_write_shopify_listings_to_releases,
             fetch_inventory_levels_for_variants,
+            shopify_ii_dual_write_exclusion_reason,
         )
 
         flags = load_inventory_dual_write_flags()
         if not flags.shopify_enabled:
             return {"enabled": False}
+
         location_id = os.getenv("SHOPIFY_INVENTORY_LOCATION_ID", "").strip()
+        # Default 1000 covers the current active catalogue (~681) with headroom.
+        fetch_max = int(os.getenv("INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX", "1000"))
         levels: Dict[str, Dict[str, int]] = {}
         if location_id:
-            # Cap detailed level fetches to avoid long store-sync runs on first enable.
-            sample = rows[: min(len(rows), int(os.getenv("INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX", "500")))]
+            # Fetch detailed levels only for rows that will be dual-written.
+            eligible = [
+                r for r in rows if not shopify_ii_dual_write_exclusion_reason(r)
+            ]
+            sample = eligible[: min(len(eligible), max(0, fetch_max))]
             levels = fetch_inventory_levels_for_variants(
                 client, location_id=location_id, variant_rows=sample
             )
@@ -810,6 +817,8 @@ def _maybe_dual_write_shopify_releases(
             inventory_levels_by_variant=levels,
             flags=flags,
         )
+        stats["level_fetch_max"] = fetch_max
+        stats["level_fetch_count"] = len(levels)
         return stats
     except Exception as exc:
         print(f"WARN: inventory dual-write (shopify) failed: {exc}")

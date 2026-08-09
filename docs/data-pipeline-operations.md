@@ -83,7 +83,8 @@ Supplier files (.xlsx / .xls / .csv / .txt)
 | `AVAILABILITY_FEED_FRESH_MAX_HOURS` | `36` | Freshness: fresh window |
 | `AVAILABILITY_FEED_AGING_MAX_HOURS` | `72` | Freshness: aging window |
 | `SUPPLIER_RESOLUTION_AUTO_ACCEPT_MIN_CONFIDENCE` | `0.95` | Auto-accept SKU→release matches |
-| `INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX` | `500` | Cap detailed Shopify qty fetches per sync |
+| `INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX` | `1000` | Cap detailed Shopify qty fetches per sync (set ≥ active variant count) |
+| `SHOPIFY_INVENTORY_LOCATION_ID` | `gid://shopify/Location/78213775584` | TAPE fulfilment location for tape inventory levels |
 
 ---
 

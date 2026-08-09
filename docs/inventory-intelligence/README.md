@@ -47,7 +47,8 @@ Shopify is only a sales channel (`release_shopify_listings`), never the canonica
 | `AVAILABILITY_FEED_FRESH_MAX_HOURS` | `36` | Freshness window |
 | `AVAILABILITY_FEED_AGING_MAX_HOURS` | `72` | Aging window |
 | `SUPPLIER_RESOLUTION_AUTO_ACCEPT_MIN_CONFIDENCE` | `0.95` | Auto-accept floor |
-| `INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX` | `500` | Max Shopify level fetches per store sync |
+| `INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX` | `1000` | Max Shopify level fetches per store sync (covers full active catalogue) |
+| `SHOPIFY_INVENTORY_LOCATION_ID` | _(required for tape levels)_ | Canonical TAPE fulfilment location GID |
 
 ## Explicitly not done yet
 
