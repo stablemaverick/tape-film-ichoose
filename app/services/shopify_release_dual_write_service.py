@@ -23,6 +23,7 @@ from app.rules.inventory_invariant_rules import (
     validate_tape_inventory_levels,
 )
 from app.services.inventory_events_service import build_event_dedupe_key, emit_inventory_event
+from app.services.shopify_ii_product_domain import is_vinyl_soundtrack_listing
 from app.services.shopify_inventory_settings_audit import is_gift_card_product_type
 from app.services.shopify_release_mapping import classify_shopify_listing_mapping
 
@@ -38,12 +39,20 @@ SHOPIFY_II_EXACT_EXCLUDED_PRODUCT_TITLES = frozenset(
 )
 
 
-def shopify_ii_dual_write_exclusion_reason(row: Mapping[str, Any]) -> Optional[str]:
+def shopify_ii_dual_write_exclusion_reason(
+    row: Mapping[str, Any],
+    *,
+    soundtrack_product_ids: Optional[set[str]] = None,
+) -> Optional[str]:
     """
-    Deterministic non-release exclusions for Shopify → II dual-write.
+    Deterministic exclusions for Shopify → *film* Inventory Intelligence dual-write.
 
-    Prefer Shopify product_type (established gift-card convention). Fall back only to
-    exact known product titles from production audit — never broad substring filters.
+    Reasons:
+      - gift_card_product_type / gift_card_exact_title / test_product_exact_title
+      - vinyl_soundtrack (valid commerce product; different inventory domain)
+
+    Prefer structured Shopify fields (product_type, collection handles, media_format,
+    soundtracks collection product IDs). Never broad title substring filters.
     """
     if is_gift_card_product_type(row.get("product_type")):
         return "gift_card_product_type"
@@ -52,6 +61,8 @@ def shopify_ii_dual_write_exclusion_reason(row: Mapping[str, Any]) -> Optional[s
         if "gift card" in title:
             return "gift_card_exact_title"
         return "test_product_exact_title"
+    if is_vinyl_soundtrack_listing(row, soundtrack_product_ids=soundtrack_product_ids):
+        return "vinyl_soundtrack"
     return None
 
 
@@ -99,6 +110,7 @@ def dual_write_shopify_listings_to_releases(
     inventory_levels_by_variant: Optional[Mapping[str, Mapping[str, int]]] = None,
     flags: Optional[InventoryDualWriteFlags] = None,
     pipeline_run_id: Optional[str] = None,
+    soundtrack_product_ids: Optional[set[str]] = None,
 ) -> Dict[str, Any]:
     """
     For each Shopify listing row:
@@ -133,7 +145,9 @@ def dual_write_shopify_listings_to_releases(
 
     for row in listing_rows:
         try:
-            exclude_reason = shopify_ii_dual_write_exclusion_reason(row)
+            exclude_reason = shopify_ii_dual_write_exclusion_reason(
+                row, soundtrack_product_ids=soundtrack_product_ids
+            )
             if exclude_reason:
                 stats["skipped_non_release"] += 1
                 skip_reasons[exclude_reason] = skip_reasons.get(exclude_reason, 0) + 1

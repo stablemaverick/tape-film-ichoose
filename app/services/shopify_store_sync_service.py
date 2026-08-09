@@ -30,6 +30,7 @@ from supabase import Client, create_client
 
 from app.clients.shopify_client import ShopifyClient
 from app.helpers.text_helpers import clean_text
+from app.services.shopify_ii_product_domain import collection_handles_csv
 
 _MAX_ERR_LEN = 2000
 
@@ -69,6 +70,14 @@ query GetProducts($cursor: String) {
       status
       publishedAt
       productType
+      formatMeta: metafield(namespace: "custom", key: "format") {
+        value
+      }
+      collections(first: 25) {
+        nodes {
+          handle
+        }
+      }
       directorMeta: metafield(namespace: "custom", key: "director") {
         value
       }
@@ -583,6 +592,13 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
             )
             director_text = clean_text((product.get("directorMeta") or {}).get("value"))
             studio_text = clean_text((product.get("studioMeta") or {}).get("value"))
+            media_format = clean_text((product.get("formatMeta") or {}).get("value"))
+            collection_handles = collection_handles_csv(
+                [
+                    (n or {}).get("handle")
+                    for n in ((product.get("collections") or {}).get("nodes") or [])
+                ]
+            )
             film_released_date, film_released_raw = _parse_shopify_metafield_date(
                 (product.get("filmReleasedMeta") or {}).get("value")
             )
@@ -614,6 +630,8 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                         "vendor": vendor,
                         "product_status": product_status,
                         "product_type": product_type,
+                        "media_format": media_format,
+                        "collection_handles": collection_handles,
                         "published_to_online_store": published_to_online_store,
                         "director_text": director_text,
                         "studio_text": studio_text,
@@ -669,6 +687,8 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                     "vendor": v.get("vendor"),
                     "product_status": v.get("product_status"),
                     "product_type": v.get("product_type"),
+                    "media_format": v.get("media_format"),
+                    "collection_handles": v.get("collection_handles"),
                     "published_to_online_store": v.get("published_to_online_store"),
                     "director_text": v.get("director_text"),
                     "studio_text": v.get("studio_text"),
@@ -708,10 +728,29 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
 
         if not dry_run:
             for batch in [rows[i : i + 200] for i in range(0, len(rows), 200)]:
-                supabase.table("shopify_listings").upsert(
-                    batch,
-                    on_conflict="shop,shopify_variant_id",
-                ).execute()
+                try:
+                    supabase.table("shopify_listings").upsert(
+                        batch,
+                        on_conflict="shop,shopify_variant_id",
+                    ).execute()
+                except Exception as exc:
+                    # Pre-migration DBs may lack media_format / collection_handles.
+                    msg = str(exc).lower()
+                    if "media_format" in msg or "collection_handles" in msg:
+                        stripped = [
+                            {
+                                k: v
+                                for k, v in row.items()
+                                if k not in ("media_format", "collection_handles")
+                            }
+                            for row in batch
+                        ]
+                        supabase.table("shopify_listings").upsert(
+                            stripped,
+                            on_conflict="shop,shopify_variant_id",
+                        ).execute()
+                    else:
+                        raise
 
             # Keep matched catalog_items commercially in sync with live Shopify sellability.
             # Match confidence comes from shopify_listings.match_status + catalog_item_id.
@@ -786,6 +825,9 @@ def _maybe_dual_write_shopify_releases(
     """Phase 3b dual-write — no-op unless flags enabled. Never blocks store sync."""
     try:
         from app.config.inventory_dual_write import load_inventory_dual_write_flags
+        from app.services.shopify_ii_product_domain import (
+            fetch_soundtracks_collection_product_ids,
+        )
         from app.services.shopify_release_dual_write_service import (
             dual_write_shopify_listings_to_releases,
             fetch_inventory_levels_for_variants,
@@ -796,6 +838,12 @@ def _maybe_dual_write_shopify_releases(
         if not flags.shopify_enabled:
             return {"enabled": False}
 
+        soundtrack_product_ids = set()
+        try:
+            soundtrack_product_ids = fetch_soundtracks_collection_product_ids(client)
+        except Exception as exc:
+            print(f"WARN: soundtracks collection fetch failed: {exc}")
+
         location_id = os.getenv("SHOPIFY_INVENTORY_LOCATION_ID", "").strip()
         # Default 1000 covers the current active catalogue (~681) with headroom.
         fetch_max = int(os.getenv("INVENTORY_DUAL_WRITE_LEVEL_FETCH_MAX", "1000"))
@@ -803,7 +851,11 @@ def _maybe_dual_write_shopify_releases(
         if location_id:
             # Fetch detailed levels only for rows that will be dual-written.
             eligible = [
-                r for r in rows if not shopify_ii_dual_write_exclusion_reason(r)
+                r
+                for r in rows
+                if not shopify_ii_dual_write_exclusion_reason(
+                    r, soundtrack_product_ids=soundtrack_product_ids
+                )
             ]
             sample = eligible[: min(len(eligible), max(0, fetch_max))]
             levels = fetch_inventory_levels_for_variants(
@@ -816,9 +868,11 @@ def _maybe_dual_write_shopify_releases(
             location_id=location_id or None,
             inventory_levels_by_variant=levels,
             flags=flags,
+            soundtrack_product_ids=soundtrack_product_ids,
         )
         stats["level_fetch_max"] = fetch_max
         stats["level_fetch_count"] = len(levels)
+        stats["soundtracks_collection_products"] = len(soundtrack_product_ids)
         return stats
     except Exception as exc:
         print(f"WARN: inventory dual-write (shopify) failed: {exc}")

@@ -1,0 +1,305 @@
+{
+  "summary": {
+    "active_shopify_products": 29,
+    "active_shopify_variants": 29,
+    "contaminated_listings": 29,
+    "contaminated_tape_levels": 29,
+    "contaminated_releases": 29,
+    "all_created_on_activation_day": 29,
+    "supplier_offers_linked": 0,
+    "current_projected_total": 666,
+    "correct_film_after_cleanup": 637
+  },
+  "candidates": [
+    {
+      "title": "La La Land (Original Motion Picture Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8811564171488",
+      "shopify_variant_id": "gid://shopify/ProductVariant/46934620963040",
+      "release_variant_id": "ccd40271-3c6f-4643-b0e0-eee4c9d657b0",
+      "release_shopify_listing_id": "925342ee-df12-48f3-9a93-e0a0cfafd01c",
+      "tape_inventory_level_id": "2b7a0bdf-e7e4-4eac-8e76-643c70e1295c",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Inside Llewyn Davis (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8830289903840",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47026459672800",
+      "release_variant_id": "11684a1a-df0b-4b24-9f7e-31c23bba4db5",
+      "release_shopify_listing_id": "1d375527-d73e-42bd-b6d0-d9d523dcc871",
+      "tape_inventory_level_id": "7585da4f-df1f-4f60-bf8a-709998228383",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "The Graduate / Simon and Garfunkel",
+      "shopify_product_id": "gid://shopify/Product/8859009581280",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47195526660320",
+      "release_variant_id": "8063198a-57fc-42a1-ac3d-842e95b85d82",
+      "release_shopify_listing_id": "b69f644c-7548-43f1-a315-a35450b795da",
+      "tape_inventory_level_id": "80e2efdd-7589-4752-9406-f6113e590a76",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Little Women (Original Soundtrack) (Lavender / 180 Gram) Vinyl Record",
+      "shopify_product_id": "gid://shopify/Product/8830292852960",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47026469044448",
+      "release_variant_id": "dc29eddb-581a-4c3f-9b5d-dc5b363a1bbb",
+      "release_shopify_listing_id": "4084c4f5-c32f-40ee-ad80-570d05ad6441",
+      "tape_inventory_level_id": "5a563061-a818-4635-b6a0-c077eff29521",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Hans Zimmer: The Classics Vinyl",
+      "shopify_product_id": "gid://shopify/Product/8978538660064",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47751523238112",
+      "release_variant_id": "7f09f511-a08a-4dbb-bc08-114b806ffb5b",
+      "release_shopify_listing_id": "d8aef894-350a-4bcf-869e-99987db1677b",
+      "tape_inventory_level_id": "fd8fbd02-5e2a-4f1e-955c-543622a847dd",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Sinners (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8941688783072",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47601722589408",
+      "release_variant_id": "46f859d2-5912-4bab-bfb1-9e5d17068775",
+      "release_shopify_listing_id": "707e233e-dc88-41c5-824a-ffb55c15338c",
+      "tape_inventory_level_id": "75b44aaa-6191-44f3-9538-d89e1814d8c6",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Euphoria: Season 1 (Pink/Purple Splatter Vinyl)",
+      "shopify_product_id": "gid://shopify/Product/8941685080288",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47601700077792",
+      "release_variant_id": "4e1ed910-b696-4c04-be55-e29908701805",
+      "release_shopify_listing_id": "ed667bae-f169-4d1e-a85f-3af5b37c5d9e",
+      "tape_inventory_level_id": "8a015f51-5a9e-4e88-afa2-5a4dd0ee0686",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Jackie Brown: Music From The Miramax Motion Picture",
+      "shopify_product_id": "gid://shopify/Product/8859021607136",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47195783332064",
+      "release_variant_id": "0462db25-6721-4d20-82a7-d5e74715fa2c",
+      "release_shopify_listing_id": "bb6303df-fe64-4b33-ae4f-7bf80423517e",
+      "tape_inventory_level_id": "559f7a77-8632-4fce-80b1-edccd038e782",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "The Hateful Eight (Original Motion Picture Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8832854458592",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042913337568",
+      "release_variant_id": "89cd90a0-2b24-4e7b-a760-c9500298cff9",
+      "release_shopify_listing_id": "3bce3069-3a10-41bf-9503-b52c6ce41ad7",
+      "tape_inventory_level_id": "0b298604-ed40-46eb-90ea-22ce9b34f6cd",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Music From Succession (LP)",
+      "shopify_product_id": "gid://shopify/Product/8832850985184",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042891219168",
+      "release_variant_id": "65180181-0cad-422a-bc14-e2ce19e53118",
+      "release_shopify_listing_id": "cf90665b-f343-46e4-b3e4-51f54bf88285",
+      "tape_inventory_level_id": "65e73412-5312-4a27-ae48-4ee46f6b4461",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Spirited Away: Image Album (Original Soundtrack) [Import]",
+      "shopify_product_id": "gid://shopify/Product/8830313758944",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47026555683040",
+      "release_variant_id": "aba91518-7082-43cb-91f9-1c1501209d8f",
+      "release_shopify_listing_id": "6b2551e5-801c-48de-8764-1412ae120a7c",
+      "tape_inventory_level_id": "845aa237-d5cd-4e69-9a7e-432846e645b9",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Grave Of The Fireflies: Soundtrack Collection [Import]",
+      "shopify_product_id": "gid://shopify/Product/8830304387296",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47026526781664",
+      "release_variant_id": "fd302079-5170-414b-949a-1930822b9332",
+      "release_shopify_listing_id": "3c4d6774-7c01-4b18-803c-171d7cac6817",
+      "tape_inventory_level_id": "ac296787-3ba3-4c6a-9ef9-80d4d601539f",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Lost In Translation (Music From The Motion Picture Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8830298259680",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47026482217184",
+      "release_variant_id": "34c917fe-35cd-40e3-80b1-0dc036431687",
+      "release_shopify_listing_id": "0e6ddef3-af93-4ce8-80d6-2231a0d300c4",
+      "tape_inventory_level_id": "ae76b656-94de-430a-842e-26639e3338df",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "The Odyssey (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/9929234481376",
+      "shopify_variant_id": "gid://shopify/ProductVariant/53388499714272",
+      "release_variant_id": "55da2e66-8a86-4bbe-b92f-2dda92486e9a",
+      "release_shopify_listing_id": "e8ffc149-e4fe-4421-baef-47f5594394d2",
+      "tape_inventory_level_id": "881a80ad-6f40-468e-b282-c38726f237c3",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "CD"
+    },
+    {
+      "title": "The Odyssey (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/9929225666784",
+      "shopify_variant_id": "gid://shopify/ProductVariant/53388489720032",
+      "release_variant_id": "e56dc090-8008-436a-8b29-75629ffebc09",
+      "release_shopify_listing_id": "3c53b044-fc2e-4fe6-905c-e947fe0deec3",
+      "tape_inventory_level_id": "bb4d177a-095c-4907-bb61-19aeadca4a1d",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "One Battle After Another (Original Score)",
+      "shopify_product_id": "gid://shopify/Product/9072249274592",
+      "shopify_variant_id": "gid://shopify/ProductVariant/48143741288672",
+      "release_variant_id": "5d26c7b6-073b-4d6b-b216-5cf29b1d78ef",
+      "release_shopify_listing_id": "98953709-1177-4d43-8058-f8ef680aca16",
+      "tape_inventory_level_id": "c6eccbf7-f1ec-456f-81db-8be053c55f77",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Edward Scissorhands -1921 Edition Blue/Pink Candyland Swirl Vinyl",
+      "shopify_product_id": "gid://shopify/Product/8961867088096",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47670347858144",
+      "release_variant_id": "90062cf5-2068-4b40-8eae-90a5dc356b0d",
+      "release_shopify_listing_id": "6e39a101-1226-4fbc-84f3-6af028d2c324",
+      "tape_inventory_level_id": "658f8278-1fbc-4316-b7e5-e16f0b4158f6",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Trainspotting - Various Artists",
+      "shopify_product_id": "gid://shopify/Product/8957082271968",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47652203987168",
+      "release_variant_id": "11148963-b8b3-4856-b0cf-9d59eed04f97",
+      "release_shopify_listing_id": "052552eb-a09b-439c-99e9-374cd89ff3be",
+      "tape_inventory_level_id": "044c61eb-beaa-4717-842a-057d31995b5d",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "The Assassination of Jesse James By the Coward Robert Ford",
+      "shopify_product_id": "gid://shopify/Product/8948979630304",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47627863326944",
+      "release_variant_id": "68e9955a-82a0-4c0a-aebe-ac8835969e84",
+      "release_shopify_listing_id": "e3f41bed-591b-43c5-bcba-52fd1abc7cbd",
+      "tape_inventory_level_id": "e3f643e1-f790-432c-a1ed-d96371104428",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Quentin Tarantino's Once Upon A Time In Hollywood",
+      "shopify_product_id": "gid://shopify/Product/8941687177440",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47601714135264",
+      "release_variant_id": "e215bb9f-ff36-4559-8d0e-d6ee13014a9b",
+      "release_shopify_listing_id": "67dbee67-444d-41c6-bff6-dc22d8a48594",
+      "tape_inventory_level_id": "1db5e1ec-04ef-4d56-86b7-90cf3410826f",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Baby Driver (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8941682852064",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47601692246240",
+      "release_variant_id": "f67732c5-4373-42a8-ae47-e4ef94c4e396",
+      "release_shopify_listing_id": "edb31cca-7929-42d3-a215-490217bf7b2e",
+      "tape_inventory_level_id": "c1807100-97ad-4817-828b-826a02a0814a",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "The Phoenician Scheme (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8941680001248",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47601687789792",
+      "release_variant_id": "cf44b7b8-0485-4e7b-8584-156f071a87a8",
+      "release_shopify_listing_id": "5eb1f4b9-4796-42e0-b9d5-a9a53ee334aa",
+      "tape_inventory_level_id": "1cd44b39-ce1f-4c53-8c01-c6c02ef60de2",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Wicked: The Soundtrack (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8832861372640",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042995945696",
+      "release_variant_id": "005df178-e725-43ea-a155-bbe7b8bac906",
+      "release_shopify_listing_id": "f77ada54-a7a4-4313-9a55-5103105d68db",
+      "tape_inventory_level_id": "274f4b4a-b2c4-4c4b-a490-47574182382a",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Lost Highway (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8832857473248",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042938962144",
+      "release_variant_id": "a2a251ac-c90e-434d-988f-243f24e8b385",
+      "release_shopify_listing_id": "37b634d9-9e9e-4517-8390-17884b59e79d",
+      "tape_inventory_level_id": "b7e06120-3437-4f94-8052-f0020f598e38",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Fargo: Season 1 (Original Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8832855933152",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042919629024",
+      "release_variant_id": "e0bbd5b0-82c4-4644-bc61-1786dd7fea06",
+      "release_shopify_listing_id": "71b07c58-5887-4362-b7bd-1a900da01f2b",
+      "tape_inventory_level_id": "bb1dc572-985e-4198-baef-df76f734ff5d",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Back To Black (Original Soundtrack) - Limited Peach Colored Vinyl",
+      "shopify_product_id": "gid://shopify/Product/8832853803232",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042908586208",
+      "release_variant_id": "8379f0af-c6ed-47ef-9e52-75bad0d25dce",
+      "release_shopify_listing_id": "4abc3b99-2006-41fa-8563-5fcf6ef86bdb",
+      "tape_inventory_level_id": "3d954522-6a99-4384-aa17-881d05334afd",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "La Folia Vivaldi / Joe Hisaishi Arrangement Pantai (LP)",
+      "shopify_product_id": "gid://shopify/Product/8832853016800",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042900623584",
+      "release_variant_id": "3494aa67-5c34-421e-a502-57433ffc5f7b",
+      "release_shopify_listing_id": "cef67cc9-1cde-4c5a-a1af-89bd5228e9c1",
+      "tape_inventory_level_id": "3ec8834a-d040-43e0-81a2-d237c32ad0bc",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "Twin Peaks: Fire Walk With Me (Music From the Motion Picture Soundtrack)",
+      "shopify_product_id": "gid://shopify/Product/8832849707232",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042886238432",
+      "release_variant_id": "a0420214-79c5-4c10-9c9c-8a50747ad7ef",
+      "release_shopify_listing_id": "fcbef371-c638-470a-883a-259b09619076",
+      "tape_inventory_level_id": "11fecc80-8d07-40d2-92ef-57f713b7e6ed",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    },
+    {
+      "title": "There Will Be Blood (Original Motion Picture Score)",
+      "shopify_product_id": "gid://shopify/Product/8832846659808",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47042867822816",
+      "release_variant_id": "706116c9-f917-43e8-87d8-326f112c60e1",
+      "release_shopify_listing_id": "ef3e25d3-bc61-40d7-98db-3d49fa0f192c",
+      "tape_inventory_level_id": "5ddce233-a438-42ef-83ab-8bbdfc904e89",
+      "release_created_at": "2026-08-09T09:13:07.104894+00:00",
+      "format": "Vinyl"
+    }
+  ]
+}
