@@ -44,8 +44,15 @@ logs/
 
 # Locks / temp
 .locks/
+.state/
 tmp/
 temp/
+
+# Region B pricing-health current-state artifacts (generated on VM / local runs)
+var/pricing_health/**
+!var/pricing_health/.gitkeep
+!var/pricing_health/history/
+!var/pricing_health/history/.gitkeep
 
 # Supplier data (VERY IMPORTANT)
 supplier_exports/

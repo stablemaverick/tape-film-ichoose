@@ -11,6 +11,8 @@ set -euo pipefail
 #   02  Import Lasgo raw (stock_cost, existing barcodes only)
 #   03  Normalize raw -> staging_supplier_offers
 #   04  Update existing catalog_items (--existing-only; no media_release_date)
+#   04c Arrow inventoryPolicy sync (zero-stock DENY/CONTINUE vs supplier; non-fatal)
+#   04e Region B film pricing-health evaluation (READ-ONLY; non-fatal)
 #   05  Append pipeline run history
 #
 # Does not run harmonize (catalog sync step 04). `media_release_date` on catalog_items
@@ -30,6 +32,11 @@ set -euo pipefail
 #   Catalog exports must live under supplier_exports/*/catalog — this script never scans those dirs.
 #   FTP (stock): MOOVIES_STOCK_REMOTE_DIR / LASGO_STOCK_REMOTE_DIR — not *_CATALOG_*
 #   SKIP_FTP             set to 1 to skip FTP fetch
+#   SKIP_ARROW_INVENTORY_POLICY_SYNC=1  skip Arrow DENY/CONTINUE sync (step 04c)
+#   ARROW_INVENTORY_POLICY_SYNC_APPLY=1 apply Shopify policy mutations (else dry-run)
+#   ARROW_INVENTORY_POLICY_ENV          env file for step 04c (default .env)
+#   SKIP_REGION_B_PRICING_HEALTH=1      skip step 04e read-only pricing health
+#   REGION_B_PRICING_HEALTH_ENV         env file for step 04e (default .env.prod)
 #
 # Lasgo SFTP → FTP mirror (optional, runs inside step 00 before FTP fetch; same host/user as catalog):
 #   LASGO_SFTP_MIRROR_ENABLED=1
@@ -191,6 +198,52 @@ PY
 # Step 04 — Update existing catalog_items only (commercial whitelist; no harmonize / no release date)
 echo "[step 04] Update existing catalog_items only (no new inserts)"
 "${PYTHON}" pipeline/05_upsert_to_catalog_items.py --existing-only
+
+# Step 04c — Arrow inventoryPolicy sync (A+B; non-fatal)
+# DENY→CONTINUE when Shopify qty=0 + supplier available; CONTINUE→DENY when not.
+# Disable with SKIP_ARROW_INVENTORY_POLICY_SYNC=1.
+# Dry-run unless ARROW_INVENTORY_POLICY_SYNC_APPLY=1.
+if [[ "${SKIP_ARROW_INVENTORY_POLICY_SYNC:-0}" != "1" ]]; then
+  echo "[step 04c] Arrow inventory policy sync (zero-stock DENY/CONTINUE vs supplier)"
+  ARROW_POLICY_ARGS=(--env "${ARROW_INVENTORY_POLICY_ENV:-.env}")
+  if [[ "${ARROW_INVENTORY_POLICY_SYNC_APPLY:-0}" == "1" ]]; then
+    ARROW_POLICY_ARGS+=(--apply)
+  fi
+  set +e
+  "${PYTHON}" scripts/maintenance/sync_arrow_inventory_policy.py "${ARROW_POLICY_ARGS[@]}"
+  arrow_ec=$?
+  set -e
+  if [[ "${arrow_ec}" -ne 0 ]]; then
+    echo "WARN: arrow inventory policy sync exited ${arrow_ec} (non-fatal)"
+    if ! grep -q "^ARROW_INVENTORY_POLICY_SYNC_STATUS=" "${LOG_FILE}" 2>/dev/null; then
+      echo "ARROW_INVENTORY_POLICY_SYNC_STATUS=failed dry_run=unknown set_continue=0 set_deny=0 applied_ok=0 applied_failed=1"
+    fi
+  fi
+else
+  echo "[step 04c] Arrow inventory policy sync skipped (SKIP_ARROW_INVENTORY_POLICY_SYNC=1)"
+fi
+
+# Step 04e — Region B film pricing-health (READ-ONLY; non-fatal)
+# Canonical evaluation only. Cannot mutate Shopify price / inventoryPolicy / quantity.
+# Disable with SKIP_REGION_B_PRICING_HEALTH=1.
+if [[ "${SKIP_REGION_B_PRICING_HEALTH:-0}" == "1" ]]; then
+  echo "[step 04e] Region B pricing-health skipped (SKIP_REGION_B_PRICING_HEALTH=1)"
+elif [[ ! -f "${PROJECT_DIR}/scripts/maintenance/run_region_b_pricing_health.py" ]]; then
+  echo "[step 04e] Region B pricing-health skipped (script not present)"
+else
+  echo "[step 04e] Region B film pricing-health evaluation (READ-ONLY; no Shopify mutations)"
+  set +e
+  "${PYTHON}" scripts/maintenance/run_region_b_pricing_health.py \
+    --env "${REGION_B_PRICING_HEALTH_ENV:-.env.prod}"
+  pricing_ec=$?
+  set -e
+  if [[ "${pricing_ec}" -ne 0 ]]; then
+    echo "WARN: Region B pricing-health exited ${pricing_ec} (non-fatal)"
+    if ! grep -q '^REGION_B_PRICING_HEALTH_STATUS=' "${LOG_FILE}" 2>/dev/null; then
+      echo "REGION_B_PRICING_HEALTH_STATUS=failed evaluated=0 shopify_mutations=0"
+    fi
+  fi
+fi
 
 # Completion banner BEFORE observability append so parse_log_file sees end timestamp + completed.
 echo "================================================================="
