@@ -28,6 +28,8 @@ from app.helpers.text_helpers import chunked, clean_text, parse_date, slugify
 from app.rules.pricing_rules import (
     DEFAULT_GBP_AUD_RATE,
     DEFAULT_LANDED_COST_MARKUP,
+    DEFAULT_MARGIN_FLOOR_RATIO,
+    calculate_sale_price_with_margin_floor_from_gbp_cost,
     calculate_shopify_cost_aud,
 )
 
@@ -911,13 +913,19 @@ def _product_set_create(
 ) -> Dict[str, Any]:
     title = clean_text(row.get("title")) or f"Film {barcode}"
     sku = clean_text(row.get("supplier_sku")) or clean_text(row.get("sku")) or barcode
-    price = str(row.get("calculated_sale_price")) if row.get("calculated_sale_price") is not None else "0.00"
-
     gbp_aud = float(os.getenv("GBP_AUD_RATE", str(DEFAULT_GBP_AUD_RATE)))
     landed_markup = float(os.getenv("LANDED_COST_MARKUP", str(DEFAULT_LANDED_COST_MARKUP)))
+    margin_floor = float(os.getenv("DEFAULT_MARGIN_FLOOR_RATIO", str(DEFAULT_MARGIN_FLOOR_RATIO)))
     raw_cost = float(row["cost_price"]) if row.get("cost_price") is not None else None
     cost_val = calculate_shopify_cost_aud(raw_cost, gbp_aud_rate=gbp_aud, landed_cost_markup=landed_markup)
     cost = f"{cost_val:.2f}" if cost_val is not None else None
+    chosen_price = resolve_new_listing_price(
+        row=row,
+        gbp_aud_rate=gbp_aud,
+        landed_cost_markup=landed_markup,
+        margin_floor_ratio=margin_floor,
+    )
+    price = f"{chosen_price:.2f}"
 
     tags = build_tags(row)
     metafields = build_metafields(row)
@@ -995,6 +1003,30 @@ def _product_set_create(
     if errs:
         raise RuntimeError(f"productSet userErrors: {errs}")
     return payload.get("product") or {}
+
+
+def resolve_new_listing_price(
+    *,
+    row: Dict[str, Any],
+    gbp_aud_rate: float = DEFAULT_GBP_AUD_RATE,
+    landed_cost_markup: float = DEFAULT_LANDED_COST_MARKUP,
+    margin_floor_ratio: float = DEFAULT_MARGIN_FLOOR_RATIO,
+) -> float:
+    """
+    Resolve default price for a NEW Shopify listing.
+
+    Keeps any higher upstream calculated price, but enforces a minimum margin floor
+    from landed cost for future created/listed products.
+    """
+    raw_cost = float(row["cost_price"]) if row.get("cost_price") is not None else None
+    floor_price = calculate_sale_price_with_margin_floor_from_gbp_cost(
+        raw_cost,
+        gbp_aud_rate=gbp_aud_rate,
+        landed_cost_markup=landed_cost_markup,
+        margin_floor_ratio=margin_floor_ratio,
+    )
+    row_price = float(row["calculated_sale_price"]) if row.get("calculated_sale_price") is not None else None
+    return max([p for p in [row_price, floor_price] if p is not None], default=0.0)
 
 
 def _writeback_catalog_row(
