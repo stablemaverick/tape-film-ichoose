@@ -282,6 +282,8 @@ def import_lasgo_raw(
         f"Total imported: {inserted} Skipped non-blu-ray: {skipped_non_bluray} "
         f"Skipped unknown: {skipped_unknown}"
     )
+    # Machine-readable handoff for run_stock_sync.sh / run_catalog_sync.sh.
+    print(f"LASGO_BATCH={batch_id}", flush=True)
     return batch_id
 
 

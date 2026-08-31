@@ -359,6 +359,8 @@ def import_raw(
         f"Mode: {mode} Batch: {batch_id} File hash: {file_hash} "
         f"Skipped unknown: {skipped_unknown}"
     )
+    # Machine-readable handoff for run_stock_sync.sh (avoid latest_batch table scan).
+    print(f"MOOVIES_BATCH={batch_id}", flush=True)
     return batch_id
 
 
