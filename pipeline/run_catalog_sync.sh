@@ -173,76 +173,78 @@ if [[ "${#MOOVIES_LIMIT_ARGS[@]}" -gt 0 || "${#LASGO_LIMIT_ARGS[@]}" -gt 0 ]]; t
   echo "Sample import limits: MOOVIES_IMPORT_LIMIT=${MOOVIES_IMPORT_LIMIT:-} LASGO_IMPORT_LIMIT=${LASGO_IMPORT_LIMIT:-}"
 fi
 
-# Step 01 — Import Moovies raw
+# Step 01 — Import Moovies raw (capture MOOVIES_BATCH= from importer stdout; same pattern as stock)
+MOOVIES_BATCH=""
 if [[ -n "${MOOVIES_FILE:-}" && -f "${MOOVIES_FILE}" ]]; then
   echo "[step 01] Import Moovies raw (full)"
+  MOOVIES_IMPORT_LOG="$(mktemp "${TMPDIR:-/tmp}/moovies_import.XXXXXX.log")"
+  set +e
   if [[ "${#MOOVIES_LIMIT_ARGS[@]}" -gt 0 ]]; then
-    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full "${MOOVIES_LIMIT_ARGS[@]}"
+    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full "${MOOVIES_LIMIT_ARGS[@]}" \
+      >"${MOOVIES_IMPORT_LOG}" 2>&1
   else
-    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full
+    "${PYTHON}" pipeline/01_import_moovies_raw.py "${MOOVIES_FILE}" --mode full \
+      >"${MOOVIES_IMPORT_LOG}" 2>&1
   fi
+  moovies_ec=$?
+  set -e
+  cat "${MOOVIES_IMPORT_LOG}"
+  MOOVIES_BATCH="$(sed -n 's/^MOOVIES_BATCH=//p' "${MOOVIES_IMPORT_LOG}" | tail -n1)"
+  rm -f "${MOOVIES_IMPORT_LOG}"
+  if [[ "${moovies_ec}" -ne 0 ]]; then
+    echo "ERROR: Moovies import failed exit=${moovies_ec}" >&2
+    exit "${moovies_ec}"
+  fi
+  if [[ -z "${MOOVIES_BATCH}" ]]; then
+    echo "ERROR: Moovies import did not emit MOOVIES_BATCH= (refusing latest_batch table scan)" >&2
+    exit 1
+  fi
+  echo "[step 01] Captured MOOVIES_BATCH=${MOOVIES_BATCH}"
 else
   echo "[step 01] Import Moovies raw (full) — SKIPPED (no file; status=${CATALOG_SOURCE_MOOVIES_STATUS})"
 fi
 
-# Step 02 — Import Lasgo raw
+# Step 02 — Import Lasgo raw (capture LASGO_BATCH= from importer stdout; same pattern as stock)
+LASGO_BATCH=""
 if [[ -n "${LASGO_FILE:-}" && -f "${LASGO_FILE}" ]]; then
   echo "[step 02] Import Lasgo raw (full, Blu-ray only)"
+  LASGO_IMPORT_LOG="$(mktemp "${TMPDIR:-/tmp}/lasgo_import.XXXXXX.log")"
+  set +e
   if [[ "${#LASGO_LIMIT_ARGS[@]}" -gt 0 ]]; then
-    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full "${LASGO_LIMIT_ARGS[@]}"
+    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full "${LASGO_LIMIT_ARGS[@]}" \
+      >"${LASGO_IMPORT_LOG}" 2>&1
   else
-    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full
+    "${PYTHON}" pipeline/02_import_lasgo_raw.py "${LASGO_FILE}" --mode full \
+      >"${LASGO_IMPORT_LOG}" 2>&1
   fi
+  lasgo_ec=$?
+  set -e
+  cat "${LASGO_IMPORT_LOG}"
+  LASGO_BATCH="$(sed -n 's/^LASGO_BATCH=//p' "${LASGO_IMPORT_LOG}" | tail -n1)"
+  rm -f "${LASGO_IMPORT_LOG}"
+  if [[ "${lasgo_ec}" -ne 0 ]]; then
+    echo "ERROR: Lasgo import failed exit=${lasgo_ec}" >&2
+    exit "${lasgo_ec}"
+  fi
+  if [[ -z "${LASGO_BATCH}" ]]; then
+    echo "ERROR: Lasgo import did not emit LASGO_BATCH= (refusing latest_batch table scan)" >&2
+    exit 1
+  fi
+  echo "[step 02] Captured LASGO_BATCH=${LASGO_BATCH}"
 else
   echo "[step 02] Import Lasgo raw (full, Blu-ray only) — SKIPPED (no file; status=${CATALOG_SOURCE_LASGO_STATUS})"
 fi
 
-# Step 03 — Normalize
+# Step 03 — Normalize using batch IDs from the imports above (no staging_lasgo_raw latest scan)
 echo "[step 03] Normalize raw -> staging_supplier_offers"
-MOOVIES_BATCH=""
-LASGO_BATCH=""
-SHOPIFY_BATCH=""
-while IFS= read -r line || [[ -n "${line}" ]]; do
-  case "$line" in
-    MOOVIES_BATCH=*) MOOVIES_BATCH="${line#MOOVIES_BATCH=}" ;;
-    LASGO_BATCH=*) LASGO_BATCH="${line#LASGO_BATCH=}" ;;
-    SHOPIFY_BATCH=*) SHOPIFY_BATCH="${line#SHOPIFY_BATCH=}" ;;
-  esac
-done < <("${PYTHON}" - <<'PY'
-import os
-from dotenv import load_dotenv
-from supabase import create_client
-
-load_dotenv(".env")
-sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
-
-def latest_batch(table):
-    resp = (
-        sb.table(table)
-        .select("import_batch_id,imported_at")
-        .order("imported_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    row = (resp.data or [None])[0]
-    bid = row.get("import_batch_id") if row else None
-    return bid if bid is not None else ""
-
-print("MOOVIES_BATCH=" + str(latest_batch("staging_moovies_raw")))
-print("LASGO_BATCH=" + str(latest_batch("staging_lasgo_raw")))
-print("SHOPIFY_BATCH=" + str(latest_batch("staging_shopify_raw")))
-PY
-)
-
 NORMALIZE_ARGS=()
 [[ -n "${MOOVIES_BATCH:-}" ]] && NORMALIZE_ARGS+=(--moovies-batch "${MOOVIES_BATCH}")
 [[ -n "${LASGO_BATCH:-}" ]] && NORMALIZE_ARGS+=(--lasgo-batch "${LASGO_BATCH}")
-[[ -n "${SHOPIFY_BATCH:-}" ]] && NORMALIZE_ARGS+=(--shopify-batch "${SHOPIFY_BATCH}")
 
 if [[ "${#NORMALIZE_ARGS[@]}" -gt 0 ]]; then
   "${PYTHON}" pipeline/03_normalize_supplier_products.py "${NORMALIZE_ARGS[@]}"
 else
-  echo "WARN: No batch IDs found, skipping normalize."
+  echo "WARN: No batch IDs from this run's imports, skipping normalize."
 fi
 
 # Step 04 — Cross-supplier harmonization
@@ -280,6 +282,22 @@ CATALOG_SYNC_SUMMARY_LINE="$(
 )"
 echo "CATALOG_SYNC_SUMMARY: ${CATALOG_SYNC_SUMMARY_LINE}"
 printf '%s\n' "${CATALOG_SYNC_SUMMARY_LINE}" > "${LOCK_DIR}/catalog_sync_last_summary.txt"
+echo "OPERATIONAL_CATALOG_SYNC_STATUS=success"
+
+# Step 07c — Supplier inventory-intelligence projection (flag-gated; non-fatal)
+echo "[step 07c] Supplier inventory-intelligence projection (post-operational)"
+set +e
+"${PYTHON}" pipeline/03b_project_supplier_intelligence.py \
+  ${MOOVIES_BATCH:+--moovies-batch "${MOOVIES_BATCH}"} \
+  ${LASGO_BATCH:+--lasgo-batch "${LASGO_BATCH}"}
+proj_ec=$?
+set -e
+if [[ "${proj_ec}" -ne 0 ]]; then
+  echo "WARN: supplier intelligence projection exited ${proj_ec} (operational catalog sync already succeeded)"
+  if ! grep -q '^INVENTORY_INTELLIGENCE_PROJECTION_STATUS=' "${LOG_FILE}" 2>/dev/null; then
+    echo "INVENTORY_INTELLIGENCE_PROJECTION_STATUS=failed enabled=unknown offers=0 error=projection_exit_${proj_ec}"
+  fi
+fi
 
 # Completion banner BEFORE observability append so parse_log_file sees end timestamp + completed.
 echo "================================================================="
