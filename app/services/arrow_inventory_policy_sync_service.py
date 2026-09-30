@@ -98,7 +98,8 @@ def normalize_studio_label(raw: Optional[str]) -> str:
         return "Arrow"
     if "second sight" in low:
         return "Second Sight"
-    if "criterion collection" in low:
+    # Criterion Collection / The Criterion Collection / bare Criterion
+    if "criterion collection" in low or low == "criterion" or low.startswith("criterion "):
         return "Criterion Collection"
     return text
 

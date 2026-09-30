@@ -2,9 +2,12 @@
 Supplier replacement-cost monitoring and 28% ex-GST margin exposure reporting.
 
 Daily stock-sync step 04d: evaluates replacement economics from supplier intelligence
-and reports margin exposure. Does NOT mutate the existing Shopify catalogue unless
-an explicit scoped allowlist is provided with apply enabled.
+and reports margin exposure for Arrow / Second Sight / Criterion Collection Region B.
 
+Does NOT mutate the existing Shopify catalogue unless an explicit scoped allowlist
+is provided with apply enabled.
+
+Criterion Region A is blocked (no US cost authority) — never inherits UK supplier cost.
 New product creation continues to use catalog_shopify_publish_service pricing.
 """
 
@@ -18,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Set, Tuple
 
 from dotenv import load_dotenv
 
@@ -35,10 +38,14 @@ from app.rules.pricing_rules import (
     replacement_landed_cost_aud,
 )
 from app.services.arrow_inventory_policy_sync_service import (
+    DEFAULT_ELIGIBLE_STUDIO_LABELS,
     WHOLESALE_SUPPLIER_IDS,
     _chunked,
     _eval_offers,
     _load_supplier_context,
+    normalize_region,
+    normalize_studio_label,
+    resolve_variant_region,
     supplier_is_usable,
 )
 from app.services.shopify_release_dual_write_service import shopify_ii_dual_write_exclusion_reason
@@ -56,8 +63,28 @@ NO_CURRENT_SUPPLIER = "NO_CURRENT_SUPPLIER"
 STALE_SUPPLIER = "STALE_SUPPLIER"
 AMBIGUOUS_MAPPING = "AMBIGUOUS_MAPPING"
 OUT_OF_SCOPE = "OUT_OF_SCOPE"
+BLOCKED_NO_AUTHORITY = "BLOCKED_NO_AUTHORITY"
 INVALID_COST = "INVALID_COST"
 ERROR = "ERROR"
+
+MARGIN_ELIGIBLE_STUDIO_LABELS = DEFAULT_ELIGIBLE_STUDIO_LABELS
+
+REGION_ENRICH_QUERY = """
+query MarginRegionEnrich($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Product {
+      id
+      region: metafield(namespace: "custom", key: "region") { value }
+      variants(first: 100) {
+        nodes {
+          id
+          region: metafield(namespace: "custom", key: "region") { value }
+        }
+      }
+    }
+  }
+}
+"""
 
 VARIANT_PRICE_UPDATE = """
 mutation ProductVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -124,6 +151,7 @@ class ProtectionSummary:
     ambiguous_mapping: int = 0
     invalid_cost: int = 0
     out_of_scope: int = 0
+    blocked_no_authority: int = 0
     errors: int = 0
     monitoring_only: bool = True
     movement_csv: str = ""
@@ -274,16 +302,19 @@ def fetch_previous_observations(
 
 
 def load_eligible_listings(supabase: Any, shop: str) -> list[dict[str, Any]]:
+    """Load matched listings for margin-eligible studios only (Arrow / SS / Criterion)."""
     rows: list[dict[str, Any]] = []
     offset = 0
     page = 500
+    allowed = set(MARGIN_ELIGIBLE_STUDIO_LABELS)
     while True:
         batch = (
             supabase.table("shopify_listings")
             .select(
                 "shop,shopify_variant_id,shopify_product_id,product_title,variant_title,"
                 "barcode,price_amount,inventory_policy,inventory_quantity,product_status,"
-                "product_type,media_format,collection_handles,match_status,catalog_item_id"
+                "product_type,media_format,collection_handles,match_status,catalog_item_id,"
+                "studio_text"
             )
             .eq("shop", shop)
             .eq("match_status", "matched")
@@ -294,11 +325,78 @@ def load_eligible_listings(supabase: Any, shop: str) -> list[dict[str, Any]]:
         )
         if not batch:
             break
-        rows.extend(batch)
+        for row in batch:
+            studio_raw = clean_text(row.get("studio_text")) or ""
+            studio_norm = normalize_studio_label(studio_raw)
+            if studio_norm not in allowed:
+                continue
+            row = dict(row)
+            row["_studio_raw"] = studio_raw
+            row["_studio_norm"] = studio_norm
+            rows.append(row)
         if len(batch) < page:
             break
         offset += page
     return rows
+
+
+def enrich_listings_with_region(
+    client: ShopifyClient,
+    listings: list[dict[str, Any]],
+    *,
+    sleep_s: float = 0.12,
+) -> None:
+    """Attach product/variant custom.region from live Shopify (authoritative for Criterion)."""
+    product_ids = sorted(
+        {
+            clean_text(r.get("shopify_product_id")) or ""
+            for r in listings
+            if clean_text(r.get("shopify_product_id"))
+        }
+    )
+    region_by_variant: dict[str, tuple[str, str]] = {}
+    for chunk in _chunked(product_ids, 20):
+        data = client.graphql(REGION_ENRICH_QUERY, {"ids": chunk})
+        for node in data.get("nodes") or []:
+            if not node or not node.get("id"):
+                continue
+            product_region = clean_text((node.get("region") or {}).get("value")) or ""
+            for v in ((node.get("variants") or {}).get("nodes") or []):
+                vid = clean_text(v.get("id")) or ""
+                if not vid:
+                    continue
+                variant_region = clean_text((v.get("region") or {}).get("value")) or ""
+                code = resolve_variant_region(
+                    product_region=product_region, variant_region=variant_region
+                )
+                region_by_variant[vid] = (variant_region or product_region, code)
+        time.sleep(sleep_s)
+    for row in listings:
+        vid = clean_text(row.get("shopify_variant_id")) or ""
+        raw, code = region_by_variant.get(vid, ("", ""))
+        row["_region_raw"] = raw
+        row["_region_norm"] = code
+
+
+def classify_studio_region_eligibility(
+    *,
+    studio_norm: str,
+    region_norm: str,
+    labels: Sequence[str] = MARGIN_ELIGIBLE_STUDIO_LABELS,
+) -> tuple[Optional[str], str]:
+    """
+    Return (monitoring_action_or_None, reason).
+
+    None action means the row may proceed to supplier-cost evaluation.
+    """
+    allowed = {str(x).strip() for x in labels if str(x).strip()}
+    if studio_norm not in allowed:
+        return OUT_OF_SCOPE, "studio_not_in_margin_scope"
+    if region_norm == "A":
+        return BLOCKED_NO_AUTHORITY, "region_a_us_no_gbp_cost_authority"
+    if region_norm != "B":
+        return OUT_OF_SCOPE, "region_missing_or_not_b"
+    return None, "region_b_eligible"
 
 
 def _resolve_monitoring_action(
@@ -355,6 +453,29 @@ def evaluate_variant_row(
     except (TypeError, ValueError):
         tape_qty_i = 0
 
+    studio_raw = clean_text(listing.get("_studio_raw") or listing.get("studio_text")) or ""
+    studio_norm = clean_text(listing.get("_studio_norm")) or normalize_studio_label(studio_raw)
+    region_raw = clean_text(listing.get("_region_raw")) or ""
+    region_norm = clean_text(listing.get("_region_norm")) or normalize_region(region_raw)
+
+    gate_action, gate_reason = classify_studio_region_eligibility(
+        studio_norm=studio_norm,
+        region_norm=region_norm,
+    )
+    if gate_action:
+        return _result_row(
+            listing,
+            monitoring_action=gate_action,
+            reason=gate_reason,
+            shopify_price=shopify_price,
+            tape_qty=tape_qty_i,
+            policy=policy,
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
+        )
+
     exclusion = shopify_ii_dual_write_exclusion_reason(listing, soundtrack_product_ids=None)
     if exclusion:
         return _result_row(
@@ -364,6 +485,10 @@ def evaluate_variant_row(
             shopify_price=shopify_price,
             tape_qty=tape_qty_i,
             policy=policy,
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
 
     rid = ctx["rsl"].get(vid)
@@ -380,6 +505,10 @@ def evaluate_variant_row(
             shopify_price=shopify_price,
             tape_qty=tape_qty_i,
             policy=policy,
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
     if not offers:
         return _result_row(
@@ -390,6 +519,10 @@ def evaluate_variant_row(
             tape_qty=tape_qty_i,
             policy=policy,
             release_variant_id=str(rid) if rid else "",
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
 
     for o in offers:
@@ -406,6 +539,10 @@ def evaluate_variant_row(
             tape_qty=tape_qty_i,
             policy=policy,
             release_variant_id=str(rid) if rid else "",
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
 
     current_pool = to_preferred_pool(evaluated)
@@ -419,6 +556,10 @@ def evaluate_variant_row(
             tape_qty=tape_qty_i,
             policy=policy,
             release_variant_id=str(rid) if rid else "",
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
     if preferred.get("is_stale"):
         return _result_row(
@@ -429,6 +570,10 @@ def evaluate_variant_row(
             tape_qty=tape_qty_i,
             policy=policy,
             release_variant_id=str(rid) if rid else "",
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
 
     curr_gbp = _f(preferred.get("unit_cost"))
@@ -442,6 +587,10 @@ def evaluate_variant_row(
             policy=policy,
             current_supplier=preferred.get("supplier_id"),
             release_variant_id=str(rid) if rid else "",
+            studio_raw=studio_raw,
+            studio_norm=studio_norm,
+            region_raw=region_raw,
+            region_norm=region_norm,
         )
 
     previous_pool = build_previous_pool(
@@ -509,7 +658,10 @@ def evaluate_variant_row(
         "variant_id": vid,
         "product_id": clean_text(listing.get("shopify_product_id")) or "",
         "barcode": barcode,
-        "region": "",
+        "studio": studio_raw,
+        "studio_norm": studio_norm,
+        "region": region_norm or region_raw,
+        "region_raw": region_raw,
         "status": clean_text(listing.get("product_status")) or "",
         "inventoryPolicy": policy,
         "TAPE_qty": tape_qty_i,
@@ -537,6 +689,7 @@ def evaluate_variant_row(
     }
 
 
+
 def _result_row(
     listing: dict[str, Any],
     *,
@@ -547,13 +700,24 @@ def _result_row(
     policy: str,
     current_supplier: str = "",
     release_variant_id: str = "",
+    studio_raw: str = "",
+    studio_norm: str = "",
+    region_raw: str = "",
+    region_norm: str = "",
 ) -> dict[str, Any]:
+    studio_raw = studio_raw or clean_text(listing.get("_studio_raw") or listing.get("studio_text")) or ""
+    studio_norm = studio_norm or clean_text(listing.get("_studio_norm")) or normalize_studio_label(studio_raw)
+    region_raw = region_raw or clean_text(listing.get("_region_raw")) or ""
+    region_norm = region_norm or clean_text(listing.get("_region_norm")) or normalize_region(region_raw)
     return {
         "title": clean_text(listing.get("product_title")) or "",
         "variant_id": clean_text(listing.get("shopify_variant_id")) or "",
         "product_id": clean_text(listing.get("shopify_product_id")) or "",
         "barcode": clean_text(listing.get("barcode")) or "",
-        "region": "",
+        "studio": studio_raw,
+        "studio_norm": studio_norm,
+        "region": region_norm or region_raw,
+        "region_raw": region_raw,
         "status": clean_text(listing.get("product_status")) or "",
         "inventoryPolicy": policy,
         "TAPE_qty": tape_qty,
@@ -579,6 +743,7 @@ def _result_row(
         "reason": reason,
         "release_variant_id": release_variant_id,
     }
+
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -679,6 +844,9 @@ def _summarize(rows: list[dict[str, Any]], summary: ProtectionSummary) -> None:
         if action == OUT_OF_SCOPE:
             summary.out_of_scope += 1
             continue
+        if action == BLOCKED_NO_AUTHORITY:
+            summary.blocked_no_authority += 1
+            continue
         if action == AMBIGUOUS_MAPPING:
             summary.ambiguous_mapping += 1
             continue
@@ -739,6 +907,8 @@ def format_status_line(summary: ProtectionSummary) -> str:
         f"scoped_apply_failed={summary.price_increases_failed} "
         f"stale={summary.stale_supplier} "
         f"no_supplier={summary.no_current_supplier} "
+        f"blocked_no_authority={summary.blocked_no_authority} "
+        f"out_of_scope={summary.out_of_scope} "
         f"errors={summary.errors}"
     )
 
@@ -772,6 +942,9 @@ def run_supplier_margin_protection(
     supabase = create_fresh_client()
 
     listings = load_eligible_listings(supabase, shop)
+    # Region must come from live Shopify metafields (Criterion Region A exclusion).
+    if listings:
+        enrich_listings_with_region(ShopifyClient(), listings)
     variant_ids = [clean_text(r.get("shopify_variant_id")) or "" for r in listings]
     barcodes = sorted({clean_text(r.get("barcode")) or "" for r in listings if r.get("barcode")})
 
