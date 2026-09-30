@@ -102,6 +102,13 @@ class TmdbClient:
             {"api_key": self.api_key},
         )
 
+    def get_release_dates(self, tmdb_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch per-country release dates and certifications for a movie."""
+        return self._request(
+            f"{self.api_url}/movie/{tmdb_id}/release_dates",
+            {"api_key": self.api_key},
+        )
+
     def get_details_and_credits(
         self, tmdb_id: int, media_type: str = "movie"
     ) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
