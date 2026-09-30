@@ -112,6 +112,9 @@ create table if not exists public.staging_lasgo_raw (
 create index if not exists staging_lasgo_raw_batch_idx
   on public.staging_lasgo_raw (import_batch_id);
 
+create index if not exists staging_lasgo_raw_imported_at_idx
+  on public.staging_lasgo_raw (imported_at desc);
+
 -- ---------------------------------------------------------------------------
 -- Normalized supplier offers staging
 -- ---------------------------------------------------------------------------
