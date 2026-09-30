@@ -200,6 +200,9 @@ class TestMonitoringActions:
         assert row["monitoring_action"] == REVIEW_COST_ANOMALY
 
 
+@patch("app.services.supplier_margin_protection_service.load_dotenv", new=lambda *a, **k: None)
+@patch("app.services.supplier_margin_protection_service.ShopifyClient", new=MagicMock())
+@patch.dict(os.environ, {"SHOPIFY_SHOP": "test-shop.myshopify.com"})
 class TestMonitoringOnlyRun:
     @patch("app.services.supplier_margin_protection_service._write_csv")
     @patch("app.services.supplier_margin_protection_service.create_fresh_client")
