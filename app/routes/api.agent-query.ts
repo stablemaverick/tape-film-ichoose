@@ -5,6 +5,12 @@ import {
   parseTapeAgentQueryDeterministic,
   type StructuredTapeAgentParse,
 } from "../lib/tape-agent-query-parser.server";
+import {
+  mapOrderingAgentToAgentQueryResponse,
+  runOrderingAgentCli,
+  scrubLegacyAgentOptions,
+  shouldDelegateToOrderingAgent,
+} from "../lib/ordering-agent-bridge.server";
 
 function normalizeText(text: string) {
   return text.trim().toLowerCase();
@@ -564,7 +570,9 @@ function releaseTs(value: string | null | undefined): number {
 }
 
 function mapOfferToAgentOption(filmResult: any, offer: any) {
-  return {
+  // Discovery-only mapping. Catalogue stock/price/cost are intentionally null —
+  // Inventory Intelligence Ordering Agent is the sole commerce authority.
+  return scrubLegacyAgentOptions({
     id: offer.id,
     catalogItemId: offer.id,
     filmId: filmResult.film.id,
@@ -576,15 +584,16 @@ function mapOfferToAgentOption(filmResult: any, offer: any) {
     studio: offer.studio,
     barcode: offer.barcode,
     mediaReleaseDate: offer.media_release_date,
-    price: offer.calculated_sale_price,
-    costGbp: offer.cost_price,
-    availability: availabilityForUi(offer),
-    supplierStock: offer.supplier_stock_status || 0,
+    price: null,
+    costGbp: undefined,
+    availability: null,
+    supplierStock: undefined,
     rankingBucket: offer.rankingBucket || null,
-    productCode: offer.supplier_sku || null,
+    productCode: null,
     sourceType: offer.source_type || null,
     shopifyVariantId: offer.shopify_variant_id || null,
-  };
+    nonAuthoritativeCatalogueHint: true,
+  });
 }
 
 function buildRecommendationReason(opt: any) {
@@ -650,6 +659,13 @@ export async function action({ request }: { request: Request }) {
 
     let structured = parseTapeAgentQueryDeterministic(message);
     structured = applyIntentModePrior(structured, intentMode, message);
+
+    // Authoritative commerce path: Inventory Intelligence Ordering Agent V1.
+    // Stale catalog_items stock/price must not answer customer availability/price.
+    if (shouldDelegateToOrderingAgent(message, intentMode, structured)) {
+      const oa = runOrderingAgentCli(message, body.conversation_id);
+      return Response.json(mapOrderingAgentToAgentQueryResponse(oa, message));
+    }
 
     try {
       if (message) {
@@ -1106,6 +1122,8 @@ export async function action({ request }: { request: Request }) {
       wishlistPrompt: salesCopy.wishlistPrompt,
       wishlistSuggested,
       intent: parsed.intent,
+      commerceAuthority: "discovery_only_not_authoritative",
+      note: "Stock and price for customer answers come only from /api/ordering-agent (Inventory Intelligence).",
         structuredParse: {
           primaryIntent: structured.primaryIntent,
           secondaryIntents: structured.secondaryIntents,
@@ -1115,23 +1133,36 @@ export async function action({ request }: { request: Request }) {
         },
         searchQuery,
       recommendedOption: recommendedOption
-        ? {
+        ? scrubLegacyAgentOptions({
             ...recommendedOption,
             availabilityLabel: formatAvailability(recommendedOption),
             recommendationReason: buildRecommendationReason(recommendedOption),
             wishlistTarget: wishlistTargetFromOption(recommendedOption),
-          }
+            price: null,
+            costGbp: undefined,
+            supplierStock: undefined,
+          })
         : null,
-      alternativeOptions: alternativeOptions.map((opt: any) => ({
-        ...opt,
-        availabilityLabel: formatAvailability(opt),
-        wishlistTarget: wishlistTargetFromOption(opt),
-      })),
-      options: filteredOptions.map((opt: any) => ({
-        ...opt,
-        availabilityLabel: formatAvailability(opt),
-        wishlistTarget: wishlistTargetFromOption(opt),
-      })),
+      alternativeOptions: alternativeOptions.map((opt: any) =>
+        scrubLegacyAgentOptions({
+          ...opt,
+          availabilityLabel: formatAvailability(opt),
+          wishlistTarget: wishlistTargetFromOption(opt),
+          price: null,
+          costGbp: undefined,
+          supplierStock: undefined,
+        }),
+      ),
+      options: filteredOptions.map((opt: any) =>
+        scrubLegacyAgentOptions({
+          ...opt,
+          availabilityLabel: formatAvailability(opt),
+          wishlistTarget: wishlistTargetFromOption(opt),
+          price: null,
+          costGbp: undefined,
+          supplierStock: undefined,
+        }),
+      ),
     });
   } catch (err) {
     return Response.json(
