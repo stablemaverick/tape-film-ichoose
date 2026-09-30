@@ -65,6 +65,7 @@ query GetProducts($cursor: String) {
     }
     nodes {
       id
+      handle
       title
       vendor
       status
@@ -583,6 +584,7 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
         for product in products:
             pid = product.get("id")
             ptitle = clean_text(product.get("title"))
+            product_handle = clean_text(product.get("handle"))
             vendor = clean_text(product.get("vendor"))
             product_status = clean_text(product.get("status"))
             product_type = clean_text(product.get("productType"))
@@ -627,6 +629,7 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                         "shopify_product_id": pid,
                         "shopify_variant_id": vid,
                         "product_title": ptitle,
+                        "product_handle": product_handle,
                         "vendor": vendor,
                         "product_status": product_status,
                         "product_type": product_type,
@@ -684,6 +687,7 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                     "shopify_product_id": v["shopify_product_id"],
                     "shopify_variant_id": vid,
                     "product_title": v.get("product_title"),
+                    "product_handle": v.get("product_handle"),
                     "vendor": v.get("vendor"),
                     "product_status": v.get("product_status"),
                     "product_type": v.get("product_type"),
@@ -734,15 +738,18 @@ def run_shopify_store_sync(*, env_file: str = ".env", dry_run: bool = False) -> 
                         on_conflict="shop,shopify_variant_id",
                     ).execute()
                 except Exception as exc:
-                    # Pre-migration DBs may lack media_format / collection_handles.
+                    # Pre-migration DBs may lack newer snapshot columns.
                     msg = str(exc).lower()
-                    if "media_format" in msg or "collection_handles" in msg:
+                    drop_cols = []
+                    if "media_format" in msg:
+                        drop_cols.append("media_format")
+                    if "collection_handles" in msg:
+                        drop_cols.append("collection_handles")
+                    if "product_handle" in msg:
+                        drop_cols.append("product_handle")
+                    if drop_cols:
                         stripped = [
-                            {
-                                k: v
-                                for k, v in row.items()
-                                if k not in ("media_format", "collection_handles")
-                            }
+                            {k: v for k, v in row.items() if k not in drop_cols}
                             for row in batch
                         ]
                         supabase.table("shopify_listings").upsert(
