@@ -1,0 +1,237 @@
+{% assign reading_time = article.metafields.custom.reading_time.value %}
+
+{% if reading_time == blank %}
+  {% assign words = article.content | strip_html | split: ' ' | size %}
+  {% assign reading_time = words | plus: 199 | divided_by: 200 %}
+
+  {% if reading_time < 1 %}
+    {% assign reading_time = 1 %}
+  {% endif %}
+{% endif %}
+
+<article class="tape-editorial-card">
+
+  {% if article.image %}
+    <a href="{{ article.url }}" class="tape-editorial-card__image">
+      {{ article.image | image_url: width: 1400 | image_tag: loading: 'lazy' }}
+    </a>
+  {% endif %}
+
+  <div class="tape-editorial-card__content">
+
+    <div class="tape-editorial-card__meta">
+      {% if article.metafields.custom.custom_author != blank %}
+        {{ article.metafields.custom.custom_author.value }}
+      {% else %}
+        {{ article.author }}
+      {% endif %}
+      <span>•</span>
+      {{ article.published_at | date: "%d %b %Y" }}
+      <span>•</span>
+      {{ reading_time }} min read
+    </div>
+
+    <h2 class="tape-editorial-card__title">
+      <a href="{{ article.url }}">{{ article.title }}</a>
+    </h2>
+
+    {% if article.excerpt != blank %}
+      <p>{{ article.excerpt | strip_html | truncate: 180 }}</p>
+    {% else %}
+      <p>{{ article.content | strip_html | truncate: 180 }}</p>
+    {% endif %}
+
+    <div class="tape-editorial-card__actions">
+
+      <a href="{{ article.url }}" class="tape-editorial-card__button">
+        Read Now
+      </a>
+
+      <div class="tape-editorial-card__share">
+        <a
+          href="#"
+          onclick="
+            if (navigator.share) {
+              navigator.share({
+                title: '{{ article.title | escape }}',
+                url: '{{ shop.url }}{{ article.url }}'
+              });
+            } else {
+              navigator.clipboard.writeText('{{ shop.url }}{{ article.url }}');
+              alert('Link copied to clipboard');
+            }
+            return false;
+          "
+        >
+          Share
+        </a>
+      </div>
+
+    </div>
+
+  </div>
+
+</article>
+
+<style>
+  /* Collapse common blog wrappers so cards stack like a magazine index */
+  *:has(> .tape-editorial-card) {
+    width: 100%;
+    max-width: 980px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+    box-sizing: border-box;
+  }
+
+  .tape-editorial-card {
+    background: linear-gradient(180deg, #141311 0%, #0c0b0a 100%);
+    border: 1px solid rgba(242, 239, 233, 0.10);
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto 4px auto;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .tape-editorial-card__image {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    background: #0c0b0a;
+  }
+
+  .tape-editorial-card__image img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .tape-editorial-card__content {
+    padding: 28px 36px 28px;
+  }
+
+  .tape-editorial-card__meta {
+    color: #9a948a;
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .tape-editorial-card__meta span {
+    margin: 0 8px;
+    opacity: 0.65;
+  }
+
+  .tape-editorial-card__title {
+    margin: 0 0 18px;
+    max-width: 28ch;
+  }
+
+  .tape-editorial-card__title a {
+    color: #f2efe9;
+    font-family: 'Oswald', Arial, sans-serif;
+    font-size: clamp(38px, 4vw, 46px);
+    font-weight: 500;
+    line-height: 0.98;
+    letter-spacing: -0.015em;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+
+  .tape-editorial-card__title a:hover {
+    opacity: 0.82;
+  }
+
+  .tape-editorial-card p {
+    color: #d6d1c8;
+    font-family: 'Barlow Condensed', Arial, sans-serif;
+    font-size: 21px;
+    line-height: 1.45;
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+
+  .tape-editorial-card__actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .tape-editorial-card__button {
+    display: inline-block;
+    background: #8e3028;
+    color: #f2efe9;
+    border: 1px solid #8e3028;
+    padding: 13px 26px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+
+  .tape-editorial-card__button:hover {
+    background: transparent;
+    color: #f2efe9;
+    border-color: #8e3028;
+    opacity: 1;
+  }
+
+  .tape-editorial-card__share a {
+    color: #f2efe9;
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-decoration: none;
+    margin-left: 16px;
+  }
+
+  .tape-editorial-card__share a:hover {
+    opacity: 0.78;
+  }
+
+  @media screen and (max-width: 749px) {
+    .tape-editorial-card {
+      margin-bottom: 4px;
+    }
+
+    .tape-editorial-card__content {
+      padding: 22px 22px 24px;
+    }
+
+    .tape-editorial-card__title {
+      max-width: none;
+    }
+
+    .tape-editorial-card__title a {
+      font-size: clamp(32px, 9vw, 42px);
+      line-height: 0.98;
+    }
+
+    .tape-editorial-card p {
+      font-size: 18px;
+      line-height: 1.45;
+    }
+
+    .tape-editorial-card__actions {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .tape-editorial-card__share a {
+      margin-left: 0;
+      margin-right: 16px;
+    }
+  }
+</style>

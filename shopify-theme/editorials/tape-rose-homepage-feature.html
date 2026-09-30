@@ -1,0 +1,276 @@
+<!--
+  TAPE! Homepage Feature — The Name of the Rose
+  Namespace: tape-rose-feature
+  Paste into Shopify Custom Liquid on the homepage.
+-->
+
+<div class="tape-rose-feature">
+
+  <a
+    href="https://tapestore.com.au/blogs/tape-film-editorial/dial-m-for-monastery"
+    class="tape-rose-feature__inner"
+  >
+
+    <div class="tape-rose-feature__image-wrap">
+      <img
+        src="https://cdn.shopify.com/s/files/1/0717/1162/1344/files/image-w1280.webp?v=1787653398"
+        alt="The Name of the Rose — editorial by Chris Attrill"
+        class="tape-rose-feature__image"
+        loading="lazy"
+        decoding="async"
+      >
+    </div>
+
+    <div class="tape-rose-feature__content">
+
+      <div class="tape-rose-feature__meta">
+        TAPE! Editorial · Chris Attrill · 12 Min Read
+      </div>
+
+      <div class="tape-rose-feature__title">
+        Dial “M”<br>
+        for Monastery
+      </div>
+
+      <div class="tape-rose-feature__subtitle">
+        <em>The Name of the Rose</em> · Jean-Jacques Annaud · 1986
+      </div>
+
+      <div class="tape-rose-feature__copy">
+        Sean Connery, medieval murder, theological intrigue and the formidable task of adapting Umberto Eco’s famously unfilmable novel.
+      </div>
+
+    </div>
+
+    <div class="tape-rose-feature__cta">
+      Read Editorial →
+    </div>
+
+  </a>
+
+</div>
+
+<style>
+  .tape-rose-feature {
+    --rose-bg: #0c0b0a;
+    --rose-panel: #141311;
+    --rose-cream: #f2efe9;
+    --rose-copy: #d6d1c8;
+    --rose-muted: #9a948a;
+    --rose-accent: #8e3028;
+
+    padding: 16px 24px 24px;
+    background: transparent;
+  }
+
+  .tape-rose-feature *,
+  .tape-rose-feature *::before,
+  .tape-rose-feature *::after {
+    box-sizing: border-box;
+  }
+
+  .tape-rose-feature__inner {
+    position: relative;
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 40px;
+    padding: 30px 34px;
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    background:
+      radial-gradient(
+        circle at 15% 50%,
+        rgba(142, 48, 40, 0.10) 0%,
+        rgba(142, 48, 40, 0) 42%
+      ),
+      linear-gradient(
+        180deg,
+        #141311 0%,
+        #0c0b0a 100%
+      );
+    border: 1px solid rgba(242, 239, 233, 0.12);
+    border-radius: 6px;
+    transition:
+      border-color 0.2s ease,
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .tape-rose-feature__inner:hover {
+    border-color: rgba(142, 48, 40, 0.48);
+    transform: translateY(-2px);
+    box-shadow:
+      0 16px 36px rgba(0, 0, 0, 0.24),
+      0 0 26px rgba(142, 48, 40, 0.05);
+  }
+
+  .tape-rose-feature__inner:focus-visible {
+    outline: 2px solid #f2efe9;
+    outline-offset: 3px;
+  }
+
+  .tape-rose-feature__image-wrap {
+    width: 360px;
+    overflow: hidden;
+    background: #0c0b0a;
+    border: 1px solid rgba(242, 239, 233, 0.10);
+  }
+
+  .tape-rose-feature__image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    object-position: 35% 35%;
+    transition: transform 0.35s ease;
+  }
+
+  .tape-rose-feature__inner:hover .tape-rose-feature__image {
+    transform: scale(1.02);
+  }
+
+  .tape-rose-feature__content {
+    min-width: 0;
+  }
+
+  .tape-rose-feature__meta {
+    margin-bottom: 13px;
+    color: #9a948a;
+    font-family: 'Oswald', Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    letter-spacing: 1.7px;
+    text-transform: uppercase;
+  }
+
+  .tape-rose-feature__title {
+    margin-bottom: 16px;
+    color: #f2efe9;
+    font-family: 'Oswald', Arial, Helvetica, sans-serif;
+    font-size: clamp(38px, 3.5vw, 56px);
+    font-weight: 700;
+    line-height: 0.92;
+    letter-spacing: -0.5px;
+    text-transform: uppercase;
+  }
+
+  .tape-rose-feature__subtitle {
+    margin-bottom: 11px;
+    color: #f2efe9;
+    font-family: 'Oswald', Arial, Helvetica, sans-serif;
+    font-size: 19px;
+    line-height: 1.2;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+  }
+
+  .tape-rose-feature__subtitle em {
+    font-style: italic;
+    text-transform: none;
+  }
+
+  .tape-rose-feature__copy {
+    max-width: 500px;
+    color: #b9b2a6;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .tape-rose-feature__cta {
+    color: #f2efe9;
+    font-family: 'Oswald', Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition:
+      color 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .tape-rose-feature__inner:hover .tape-rose-feature__cta {
+    color: #8e3028;
+    transform: translateX(4px);
+  }
+
+  @media screen and (max-width: 989px) {
+    .tape-rose-feature__inner {
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 28px;
+    }
+
+    .tape-rose-feature__image-wrap {
+      width: 260px;
+    }
+
+    .tape-rose-feature__cta {
+      grid-column: 2;
+      margin-top: -6px;
+    }
+  }
+
+  @media screen and (max-width: 749px) {
+    .tape-rose-feature {
+      padding: 16px;
+    }
+
+    .tape-rose-feature__inner {
+      display: block;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .tape-rose-feature__image-wrap {
+      width: 100%;
+      overflow: hidden;
+      border: 0;
+      border-bottom: 1px solid rgba(242, 239, 233, 0.10);
+    }
+
+    .tape-rose-feature__image {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      object-position: 35% 35%;
+    }
+
+    .tape-rose-feature__content {
+      padding: 24px 20px 0;
+    }
+
+    .tape-rose-feature__meta {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+    }
+
+    .tape-rose-feature__title {
+      font-size: clamp(32px, 9vw, 42px);
+      line-height: 0.92;
+    }
+
+    .tape-rose-feature__subtitle {
+      font-size: 17px;
+      line-height: 1.15;
+    }
+
+    .tape-rose-feature__copy {
+      max-width: 100%;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .tape-rose-feature__cta {
+      display: block;
+      margin: 20px 20px 24px;
+      font-size: 13px;
+      white-space: normal;
+    }
+  }
+</style>

@@ -1,0 +1,156 @@
+{%- liquid
+  assign has_additional_information = false
+  if block.settings.additional_information_enable
+    if block.settings.additional_information_label != blank and block.settings.additional_information_content != blank
+      assign has_additional_information = true
+    else
+      for i in (1..9)
+        assign label_index = 'additional_information_label_' | append: i
+        assign content_index = 'additional_information_content_' | append: i
+        if block.settings[label_index] != blank and block.settings[content_index] != blank
+          assign has_additional_information = true
+          break
+        endif
+      endfor
+    endif
+  endif
+-%}
+{%- if block.settings.brand_enable
+  or block.settings.stock_enable
+  or block.settings.sku_enable
+  or block.settings.tags_enable
+  or block.settings.collections_enable
+  or has_additional_information
+-%}
+  <div class="information-wrapper product__info-box" {{ block.shopify_attributes }}>
+    {%- if block.settings.brand_enable -%}
+      <div class="information flex">
+        <span class="information__label text-small db">{{ block.settings.brand_label }}:</span>
+        <a href="{{ product.vendor | url_for_vendor }}" class="information__value font-body-semi-bold text-small link link-effect-no-underline information__value--link">{{ product.vendor }}</a>
+      </div>
+    {%- endif -%}
+    {%- if block.settings.stock_enable -%}
+      <div class="information flex">
+        <span class="information__label text-small db">{{ block.settings.stock_label }}:</span>
+        <span class="information__value font-body-semi-bold text-small inventory-{{ section.id }}{% if block.settings.stock_indicator_enable %} flex align-center custom-gap{% endif %}"{% if block.settings.stock_indicator_enable %} style="--custom-gap:3px;"{% endif %}>
+          {%- assign stock_indicator_background = block.settings.stock_indicator_in_stock_color -%}
+          {%- capture stock_text -%}
+            {%- liquid
+              assign current_variant = product.selected_or_first_available_variant
+              assign is_preorder = product.metafields.custom.pre_order.value
+              assign media_release_date = product.metafields.custom.media_release_date.value | date: '%Y-%m-%d'
+              assign today_date = 'now' | date: '%Y-%m-%d'
+
+              if is_preorder and media_release_date != blank and media_release_date > today_date
+                assign stock_indicator_background = block.settings.stock_indicator_low_stock_color
+                echo 'Pre-Order'
+
+              elsif current_variant.inventory_management == 'shopify'
+
+                if current_variant.inventory_quantity > 0
+
+                  if block.settings.show_inventory_quantity
+                    echo 'products.product.inventory_in_stock_show_count' | t: quantity: current_variant.inventory_quantity
+                  else
+                    echo 'products.product.inventory_in_stock' | t
+                  endif
+
+                else
+
+                  if current_variant.inventory_policy == 'continue'
+                    assign stock_indicator_background = block.settings.stock_indicator_low_stock_color
+                    echo 'Backorder from Supplier'
+                  else
+                    assign stock_indicator_background = block.settings.stock_indicator_out_of_stock_color
+                    echo 'products.product.inventory_out_of_stock' | t
+                  endif
+
+                endif
+
+              endif
+            -%}
+          {%- endcapture -%}
+          {%- if block.settings.stock_indicator_enable -%}
+            <span class="stock-indicator por" style="
+              --stock-indicator-background: {{ stock_indicator_background.red }}, {{ stock_indicator_background.green }}, {{ stock_indicator_background.blue }};
+            "></span>
+            <span class="stock-text">{{ stock_text }}</span>
+          {%- else -%}
+            {{ stock_text }}
+          {%- endif -%}
+        </span>
+      </div>
+    {%- endif -%}
+    {%- if block.settings.sku_enable -%}
+      <div class="information flex{% unless product.selected_or_first_available_variant.sku != blank %} hidden{% endunless %}">
+        <span class="information__label text-small db">{{ block.settings.sku_label }}:</span>
+        <span class="information__value font-body-semi-bold text-small sku-{{ section.id }}">{{ product.selected_or_first_available_variant.sku }}</span>
+      </div>
+    {%- endif -%}
+    {% if block.settings.barcode_enable %}
+      <div class="information flex{% unless product.selected_or_first_available_variant.barcode != blank %} hidden{% endunless %}">
+        <span class="information__label text-small db">{{ block.settings.barcode_label }}:</span>
+        <span class="information__value font-body-semi-bold text-small barcode-{{ section.id }}">
+          {{- product.selected_or_first_available_variant.barcode -}}
+        </span>
+      </div>
+    {% endif %} 
+    {%- if block.settings.tags_enable and product.tags.size > 0 -%}
+      <div class="information flex">
+        <span class="information__label text-small db">{{ block.settings.tags_label }}:</span>
+        <div class="information__value font-body-semi-bold text-small">
+          <ul class="list-unstyled flex flex-wrap information__value__link-list">
+            {%- for tag in product.tags -%}
+              <li>
+                <a
+                  class="link information__value--link link-effect-no-underline{% if forloop.first %} first{% endif %}"
+                  href="{{ routes.all_products_collection_url }}/{{ tag | handleize }}"
+                >
+                  {{- tag -}}
+                </a>{%- unless forloop.last -%},{%- endunless -%}
+              </li>
+            {%- endfor -%}  
+          </ul>
+        </div>
+      </div>
+    {%- endif -%} 
+    {%- if block.settings.collections_enable and product.collections.size > 0 -%}
+      <div class="information flex">
+        <span class="information__label text-small">{{ block.settings.collections_label }}:</span>
+        <div class="information__value font-body-semi-bold text-small">
+          <ul class="list-unstyled flex flex-wrap information__value__link-list">
+            {%- for p_collection in product.collections -%}
+              <li><a href="{{ p_collection.url }}" title="{{ p_collection.title | escape }}" class="link information__value--link link-effect-no-underline{% if forloop.first %} first{% endif %}">{{ p_collection.title }}{%- unless forloop.last -%},{%- endunless -%}</a></li>
+            {%- endfor -%}  
+          </ul>
+        </div>
+      </div>
+    {%- endif -%}
+    {%- if has_additional_information -%}
+      {%- if block.settings.additional_information_label != blank
+        and block.settings.additional_information_content != blank
+      -%}
+        <div class="information flex">
+          <span class="information__label text-small">{{ block.settings.additional_information_label }}:</span>
+          <div class="information__value font-body-semi-bold text-small">
+            {{ block.settings.additional_information_content }}
+          </div>
+        </div>
+      {%- endif -%}
+      {%- for i in (1..9) -%}
+        {%- liquid
+          assign label_index = 'additional_information_label_' | append: i
+          assign content_index = 'additional_information_content_' | append: i
+        -%}
+        {%- if block.settings[label_index] != blank and block.settings[content_index] != blank -%}
+          <div class="information flex">
+            <span class="information__label text-small">{{ block.settings[label_index] }}:</span>
+            <div class="information__value font-body-semi-bold text-small">
+              {{ block.settings[content_index] }}
+            </div>
+          </div>
+        {%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+  </div>
+{%- endif -%}
