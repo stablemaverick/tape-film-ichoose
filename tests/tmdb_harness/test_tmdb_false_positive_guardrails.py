@@ -71,7 +71,7 @@ def test_pick_best_prefers_junk_when_year_missing_tie(monkeypatch: pytest.Monkey
         },
     ]
 
-    best_legacy = pick_best_tmdb_match(MISSION_III_STEELBOOK, None, results, "movie")
+    best_legacy = mm.pick_best_tmdb_match(MISSION_III_STEELBOOK, None, results, "movie")
     assert best_legacy is not None
     assert best_legacy.get("title") == MITCH_MATCH_BAD
 
@@ -83,6 +83,6 @@ def test_pick_best_prefers_junk_when_year_missing_tie(monkeypatch: pytest.Monkey
         )
 
     monkeypatch.setattr(mm, "is_safe_tmdb_match", guarded_safe)
-    best_guarded = pick_best_tmdb_match(MISSION_III_STEELBOOK, None, results, "movie")
+    best_guarded = mm.pick_best_tmdb_match(MISSION_III_STEELBOOK, None, results, "movie")
     assert best_guarded is not None
     assert "Impossible III" in (best_guarded.get("title") or "")
