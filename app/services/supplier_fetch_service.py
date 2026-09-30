@@ -455,10 +455,17 @@ def run_catalog_fetch_strict(*, env_file: str = ".env", write_fetch_env: str) ->
     load_dotenv(env_file)
 
     from app.services.file_security_scan import scan_after_supplier_fetch
-    from app.services.lasgo_sftp_mirror import mirror_lasgo_sftp_to_ftp_if_enabled
+    from app.services.lasgo_sftp_mirror import mirror_lasgo_sftp_to_ftp
 
-    # Catalog strict: mirror failure must abort (no silent stale catalog).
-    mirror_lasgo_sftp_to_ftp_if_enabled("catalog", env_file=env_file)
+    # Catalog previously aborted the whole sync when Lasgo SFTP timed out, which also
+    # skipped II supplier_offers projection (03b). Tolerate mirror failure like stock:
+    # continue with Lasgo FTP → local / on-disk files and WARN clearly.
+    mirror_lasgo_sftp_to_ftp(
+        "catalog",
+        env_file=env_file,
+        require_mirror_enabled=True,
+        swallow_errors=True,
+    )
 
     moovies_remote_dir = _default_moovies_catalog_remote()
     lasgo_remote_dir = _default_lasgo_catalog_remote()
@@ -570,13 +577,13 @@ def run_fetch(*, env_file: str = ".env", mode: FetchMode = "stock") -> None:
 
     from app.services.lasgo_sftp_mirror import mirror_lasgo_sftp_to_ftp
 
-    # Stock: tolerate SFTP mirror errors so Lasgo FTP → local still runs (true E2E when FTP is fresh).
-    # Catalog (this same function, mode=catalog): mirror errors abort the step.
+    # Stock and catalog: tolerate SFTP mirror errors so FTP → local still runs.
+    # (Catalog used to abort hard, which blocked II projection for days when vendor SFTP was down.)
     mirror_lasgo_sftp_to_ftp(
         mode,
         env_file=env_file,
         require_mirror_enabled=True,
-        swallow_errors=(mode == "stock"),
+        swallow_errors=True,
     )
 
     if mode == "stock":

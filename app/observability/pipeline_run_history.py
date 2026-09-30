@@ -65,6 +65,12 @@ def build_history_record(
         rec["catalog_source_lasgo_status"] = run.catalog_source_lasgo_status
     if run.catalog_source_moovies_status:
         rec["catalog_source_moovies_status"] = run.catalog_source_moovies_status
+    if run.operational_status:
+        rec["operational_status"] = run.operational_status
+    if run.inventory_intelligence_projection_status:
+        rec["inventory_intelligence_projection_status"] = (
+            run.inventory_intelligence_projection_status
+        )
     return rec
 
 

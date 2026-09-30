@@ -44,6 +44,9 @@ class PipelineRun:
     catalog_source_lasgo_status: Optional[str] = None
     catalog_source_moovies_status: Optional[str] = None
     catalog_sync_summary: Optional[str] = None
+    # Separated operational vs intelligence outcomes (Option A)
+    operational_status: Optional[str] = None
+    inventory_intelligence_projection_status: Optional[str] = None
 
 
 STEP_PATTERN = re.compile(r"\[step (\d+)\]\s*(.*)")
@@ -81,6 +84,14 @@ CATALOG_SYNC_SOURCE_STATUS_PATTERN = re.compile(
 )
 CATALOG_SYNC_SUMMARY_LINE_PATTERN = re.compile(
     r"^CATALOG_SYNC_SUMMARY:\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+OPERATIONAL_STATUS_PATTERN = re.compile(
+    r"^OPERATIONAL_(?:STOCK|CATALOG)_SYNC_STATUS=(\S+)",
+    re.IGNORECASE,
+)
+INTELLIGENCE_PROJECTION_STATUS_PATTERN = re.compile(
+    r"^INVENTORY_INTELLIGENCE_PROJECTION_STATUS=(\S+)",
     re.IGNORECASE,
 )
 
@@ -210,6 +221,16 @@ def _parse_run_chunk(lines: List[str], filepath: str) -> PipelineRun:
         csum = CATALOG_SYNC_SUMMARY_LINE_PATTERN.match(line.strip())
         if csum:
             run.catalog_sync_summary = csum.group(1).strip()
+
+        op_status = OPERATIONAL_STATUS_PATTERN.match(line.strip())
+        if op_status:
+            run.operational_status = op_status.group(1).strip().lower()
+
+        intel_status = INTELLIGENCE_PROJECTION_STATUS_PATTERN.match(line.strip())
+        if intel_status:
+            run.inventory_intelligence_projection_status = (
+                intel_status.group(1).strip().lower()
+            )
 
     if current_step:
         current_step.completed = True

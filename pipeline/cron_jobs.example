@@ -19,7 +19,10 @@
 # Updates known supplier offers only. No new titles, no TMDB, no films rebuild.
 # Auto-fetches latest files from FTP, then runs steps 01-05.
 #
-30 0 * * * MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo LOG_DIR=/opt/tape-film/logs /opt/tape-film/pipeline/run_stock_sync.sh
+30 0 * * * MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo LOG_DIR=/opt/tape-film/logs ARROW_INVENTORY_POLICY_SYNC_APPLY=1 ARROW_INVENTORY_POLICY_ENV=.env.prod /opt/tape-film/pipeline/run_stock_sync.sh
+
+# Preferred production entry (Slack notify + Arrow policy apply defaults):
+# 30 0 * * * /opt/tape-film-ichoose/scripts/run_stock_with_notify.sh
 
 # ---------------------------------------------------------------------------
 # 2) CATALOG SYNC — Every few days (e.g. Mon/Wed/Fri 02:15)

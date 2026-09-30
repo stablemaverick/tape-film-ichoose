@@ -123,6 +123,21 @@ def main() -> int:
     except ValueError as exc:
         print(f"append_pipeline_run_history: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        # Local JSON is optional; DB pipeline_runs / snapshots are authoritative.
+        print(
+            f"WARN: append_pipeline_run_history: local history file not writable "
+            f"({args.history_file}): {exc}",
+            file=sys.stderr,
+        )
+        if run_id:
+            print(
+                "append_pipeline_run_history: DB persist succeeded; treating local JSON "
+                "failure as non-fatal",
+                file=sys.stderr,
+            )
+            return 0
+        return 0
 
     print(f"append_pipeline_run_history: appended run to {args.history_file}")
     return 0

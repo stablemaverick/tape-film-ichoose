@@ -50,6 +50,11 @@ safe_load_env_file() {
 
 safe_load_env_file "${ROOT}/.env"
 
+# Arrow inventoryPolicy sync (step 04c): apply mutations after supplier projection.
+# Uses .env.prod for Shopify + Supabase service credentials (same as other Shopify jobs).
+export ARROW_INVENTORY_POLICY_SYNC_APPLY="${ARROW_INVENTORY_POLICY_SYNC_APPLY:-1}"
+export ARROW_INVENTORY_POLICY_ENV="${ARROW_INVENTORY_POLICY_ENV:-.env.prod}"
+
 echo "[${JOB_LABEL}] START" >&2
 
 cd "${ROOT}"

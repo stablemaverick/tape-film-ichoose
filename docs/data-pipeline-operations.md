@@ -555,11 +555,51 @@ Retries on failure with 60s backoff. Logs to `LOG_PATH` if set.
 ```cron
 # Prefer pipeline wrappers (fetch is included inside each sync script).
 # Daily stock sync (00:30) — fetches stock FTP + runs 00→03→04 upsert (no harmonize)
-30 0 * * * MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies/stock LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo/stock /opt/tape-film/pipeline/run_stock_sync.sh
+# Arrow inventoryPolicy sync runs as stock-sync step 04c (dry-run unless APPLY=1).
+30 0 * * * MOOVIES_STOCK_DIR=/opt/tape-film/sftp/moovies/stock LASGO_STOCK_DIR=/opt/tape-film/sftp/lasgo/stock ARROW_INVENTORY_POLICY_SYNC_APPLY=1 ARROW_INVENTORY_POLICY_ENV=.env.prod /opt/tape-film/pipeline/run_stock_sync.sh
 
 # Catalog growth + enrichment (Mon/Wed/Fri 02:15) — fetches catalog FTP + runs 01–07
 15 2 * * 1,3,5 MOOVIES_CATALOG_DIR=/opt/tape-film/sftp/moovies/catalog LASGO_CATALOG_DIR=/opt/tape-film/sftp/lasgo/catalog /opt/tape-film/pipeline/run_catalog_sync.sh
 ```
+
+Arrow policy sync (also runnable alone after stock sync):
+
+```bash
+# Dry-run
+./venv/bin/python scripts/maintenance/sync_arrow_inventory_policy.py --env .env.prod
+
+# Apply
+./venv/bin/python scripts/maintenance/sync_arrow_inventory_policy.py --env .env.prod --apply
+```
+
+Env knobs on `run_stock_sync.sh`:
+
+| Var | Default | Meaning |
+|-----|---------|---------|
+| `SKIP_ARROW_INVENTORY_POLICY_SYNC` | `0` | Set `1` to skip step 04c |
+| `ARROW_INVENTORY_POLICY_SYNC_APPLY` | `0` | Set `1` to mutate Shopify (else dry-run) |
+| `ARROW_INVENTORY_POLICY_ENV` | `.env` | Env file for Shopify + Supabase credentials |
+| `SKIP_SUPPLIER_MARGIN_PROTECTION` | `0` | Set `1` to skip step 04d |
+| `SUPPLIER_MARGIN_PROTECTION_APPLY` | `0` | Set `1` for scoped apply only (requires allowlist) |
+| `SUPPLIER_MARGIN_PROTECTION_ENV` | `.env` | Env file for step 04d |
+| `SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_BARCODES` | (empty) | Comma barcodes for scoped apply |
+| `SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_VARIANT_IDS` | (empty) | Comma variant GIDs for scoped apply |
+
+Supplier margin **monitoring** (default — no Shopify mutations on existing catalogue):
+
+```bash
+./venv/bin/python scripts/maintenance/sync_supplier_margin_protection.py --env .env.prod
+```
+
+Future **scoped apply** (explicit population only — not broad catalogue repricing):
+
+```bash
+SUPPLIER_MARGIN_PROTECTION_APPLY=1 \
+SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_BARCODES=5028836041672,5050629184334 \
+./venv/bin/python scripts/maintenance/sync_supplier_margin_protection.py --env .env.prod --apply
+```
+
+Shopify → II reconciliation (`INVENTORY_DUAL_WRITE_SHOPIFY=1`) is independent of margin apply.
 
 ---
 

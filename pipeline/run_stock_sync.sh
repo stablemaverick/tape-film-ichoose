@@ -10,8 +10,10 @@ set -euo pipefail
 #   01  Import Moovies raw (stock_cost, existing barcodes only)
 #   02  Import Lasgo raw (stock_cost, existing barcodes only)
 #   03  Normalize raw -> staging_supplier_offers
+#   03b Project staging -> inventory-intelligence supplier_offers (flag-gated; non-fatal)
 #   04  Update existing catalog_items (--existing-only; no media_release_date)
-#   04c Arrow inventoryPolicy sync (zero-stock DENY/CONTINUE vs supplier; non-fatal)
+#   04c Studio inventoryPolicy sync (Arrow/Second Sight/Criterion Region B; non-fatal)
+#   04d Supplier margin monitor (Region B studios; monitoring-only by default; non-fatal)
 #   04e Region B film pricing-health evaluation (READ-ONLY; non-fatal)
 #   05  Append pipeline run history
 #
@@ -32,9 +34,12 @@ set -euo pipefail
 #   Catalog exports must live under supplier_exports/*/catalog — this script never scans those dirs.
 #   FTP (stock): MOOVIES_STOCK_REMOTE_DIR / LASGO_STOCK_REMOTE_DIR — not *_CATALOG_*
 #   SKIP_FTP             set to 1 to skip FTP fetch
-#   SKIP_ARROW_INVENTORY_POLICY_SYNC=1  skip Arrow DENY/CONTINUE sync (step 04c)
-#   ARROW_INVENTORY_POLICY_SYNC_APPLY=1 apply Shopify policy mutations (else dry-run)
-#   ARROW_INVENTORY_POLICY_ENV          env file for step 04c (default .env)
+#   SKIP_ARROW_INVENTORY_POLICY_SYNC=1 / SKIP_STUDIO_INVENTORY_POLICY_SYNC=1  skip step 04c
+#   ARROW_INVENTORY_POLICY_SYNC_APPLY=1 / STUDIO_INVENTORY_POLICY_SYNC_APPLY=1  apply policy mutations
+#   ARROW_INVENTORY_POLICY_ENV / STUDIO_INVENTORY_POLICY_ENV  env file for step 04c (default .env)
+#   SKIP_SUPPLIER_MARGIN_PROTECTION=1   skip step 04d
+#   SUPPLIER_MARGIN_PROTECTION_APPLY=1  scoped price apply only (requires allowlist)
+#   SUPPLIER_MARGIN_PROTECTION_ENV      env file for step 04d (default .env)
 #   SKIP_REGION_B_PRICING_HEALTH=1      skip step 04e read-only pricing health
 #   REGION_B_PRICING_HEALTH_ENV         env file for step 04e (default .env.prod)
 #
@@ -195,32 +200,96 @@ PY
   --moovies-batch "${MOOVIES_BATCH}" \
   --lasgo-batch "${LASGO_BATCH}"
 
+# Step 03b — Project staging offers into inventory-intelligence supplier_offers (flag-gated; non-fatal).
+# Stock sync updates staging/catalog but historically only catalog sync ran 03b. Catalog sync has been
+# aborting on Lasgo SFTP, freezing II last_seen_at. Project here so Moovies/Lasgo authority stays current.
+# Disable with SKIP_SUPPLIER_INTELLIGENCE_PROJECTION=1.
+if [[ "${SKIP_SUPPLIER_INTELLIGENCE_PROJECTION:-0}" != "1" ]]; then
+  echo "[step 03b] Supplier inventory-intelligence projection (post-normalize; non-fatal)"
+  set +e
+  "${PYTHON}" pipeline/03b_project_supplier_intelligence.py \
+    ${MOOVIES_BATCH:+--moovies-batch "${MOOVIES_BATCH}"} \
+    ${LASGO_BATCH:+--lasgo-batch "${LASGO_BATCH}"} \
+    --env-file "${SUPPLIER_INTELLIGENCE_ENV:-.env}"
+  proj_ec=$?
+  set -e
+  if [[ "${proj_ec}" -ne 0 ]]; then
+    echo "WARN: supplier intelligence projection exited ${proj_ec} (non-fatal)"
+    if ! grep -q '^INVENTORY_INTELLIGENCE_PROJECTION_STATUS=' "${LOG_FILE}" 2>/dev/null; then
+      echo "INVENTORY_INTELLIGENCE_PROJECTION_STATUS=failed enabled=unknown offers=0 error=projection_exit_${proj_ec}"
+    fi
+  fi
+else
+  echo "[step 03b] Supplier intelligence projection skipped (SKIP_SUPPLIER_INTELLIGENCE_PROJECTION=1)"
+fi
+
 # Step 04 — Update existing catalog_items only (commercial whitelist; no harmonize / no release date)
 echo "[step 04] Update existing catalog_items only (no new inserts)"
 "${PYTHON}" pipeline/05_upsert_to_catalog_items.py --existing-only
 
-# Step 04c — Arrow inventoryPolicy sync (A+B; non-fatal)
+# Step 04c — Studio inventoryPolicy sync (Arrow / Second Sight / Criterion Region B; non-fatal)
 # DENY→CONTINUE when Shopify qty=0 + supplier available; CONTINUE→DENY when not.
-# Disable with SKIP_ARROW_INVENTORY_POLICY_SYNC=1.
-# Dry-run unless ARROW_INVENTORY_POLICY_SYNC_APPLY=1.
-if [[ "${SKIP_ARROW_INVENTORY_POLICY_SYNC:-0}" != "1" ]]; then
-  echo "[step 04c] Arrow inventory policy sync (zero-stock DENY/CONTINUE vs supplier)"
-  ARROW_POLICY_ARGS=(--env "${ARROW_INVENTORY_POLICY_ENV:-.env}")
-  if [[ "${ARROW_INVENTORY_POLICY_SYNC_APPLY:-0}" == "1" ]]; then
-    ARROW_POLICY_ARGS+=(--apply)
+# Criterion Region A is excluded. Disable with SKIP_ARROW_INVENTORY_POLICY_SYNC=1
+# (legacy env name retained) or SKIP_STUDIO_INVENTORY_POLICY_SYNC=1.
+# Dry-run unless ARROW_INVENTORY_POLICY_SYNC_APPLY=1 or STUDIO_INVENTORY_POLICY_SYNC_APPLY=1.
+if [[ "${SKIP_STUDIO_INVENTORY_POLICY_SYNC:-${SKIP_ARROW_INVENTORY_POLICY_SYNC:-0}}" != "1" ]]; then
+  echo "[step 04c] Studio inventory policy sync (Arrow/Second Sight/Criterion Region B)"
+  STUDIO_POLICY_ENV="${STUDIO_INVENTORY_POLICY_ENV:-${ARROW_INVENTORY_POLICY_ENV:-.env}}"
+  STUDIO_POLICY_ARGS=(--env "${STUDIO_POLICY_ENV}")
+  if [[ "${STUDIO_INVENTORY_POLICY_SYNC_APPLY:-${ARROW_INVENTORY_POLICY_SYNC_APPLY:-0}}" == "1" ]]; then
+    STUDIO_POLICY_ARGS+=(--apply)
   fi
   set +e
-  "${PYTHON}" scripts/maintenance/sync_arrow_inventory_policy.py "${ARROW_POLICY_ARGS[@]}"
+  if [[ -f "${PROJECT_DIR}/scripts/maintenance/sync_studio_inventory_policy.py" ]]; then
+    "${PYTHON}" scripts/maintenance/sync_studio_inventory_policy.py "${STUDIO_POLICY_ARGS[@]}"
+  else
+    "${PYTHON}" scripts/maintenance/sync_arrow_inventory_policy.py "${STUDIO_POLICY_ARGS[@]}"
+  fi
   arrow_ec=$?
   set -e
   if [[ "${arrow_ec}" -ne 0 ]]; then
-    echo "WARN: arrow inventory policy sync exited ${arrow_ec} (non-fatal)"
-    if ! grep -q "^ARROW_INVENTORY_POLICY_SYNC_STATUS=" "${LOG_FILE}" 2>/dev/null; then
+    echo "WARN: studio inventory policy sync exited ${arrow_ec} (non-fatal)"
+    if ! grep -q "^ARROW_INVENTORY_POLICY_SYNC_STATUS=\|^STUDIO_INVENTORY_POLICY_SYNC_STATUS=" "${LOG_FILE}" 2>/dev/null; then
       echo "ARROW_INVENTORY_POLICY_SYNC_STATUS=failed dry_run=unknown set_continue=0 set_deny=0 applied_ok=0 applied_failed=1"
     fi
   fi
 else
-  echo "[step 04c] Arrow inventory policy sync skipped (SKIP_ARROW_INVENTORY_POLICY_SYNC=1)"
+  echo "[step 04c] Studio inventory policy sync skipped"
+fi
+
+# Step 04d — Supplier replacement-cost monitoring (non-fatal; monitoring-only by default)
+# Arrow / Second Sight / Criterion Region B only. Criterion Region A → BLOCKED_NO_AUTHORITY.
+# Apply requires SUPPLIER_MARGIN_PROTECTION_APPLY=1 AND an explicit allowlist.
+# Disable with SKIP_SUPPLIER_MARGIN_PROTECTION=1.
+if [[ "${SKIP_SUPPLIER_MARGIN_PROTECTION:-0}" != "1" ]]; then
+  echo "[step 04d] Supplier margin monitor (cost movement + 28% exposure; no catalogue mutations by default)"
+  MARGIN_ARGS=(--env "${SUPPLIER_MARGIN_PROTECTION_ENV:-.env}")
+  if [[ "${SUPPLIER_MARGIN_PROTECTION_APPLY:-0}" == "1" ]]; then
+    MARGIN_ARGS+=(--apply)
+    if [[ -n "${SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_BARCODES:-}" ]]; then
+      MARGIN_ARGS+=(--allowlist-barcodes "${SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_BARCODES}")
+    fi
+    if [[ -n "${SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_VARIANT_IDS:-}" ]]; then
+      MARGIN_ARGS+=(--allowlist-variants "${SUPPLIER_MARGIN_PROTECTION_ALLOWLIST_VARIANT_IDS}")
+    fi
+  fi
+  set +e
+  if [[ -f "${PROJECT_DIR}/scripts/maintenance/sync_supplier_margin_protection.py" ]]; then
+    "${PYTHON}" scripts/maintenance/sync_supplier_margin_protection.py "${MARGIN_ARGS[@]}"
+    margin_ec=$?
+  else
+    echo "WARN: sync_supplier_margin_protection.py missing — skipping step 04d"
+    margin_ec=0
+  fi
+  set -e
+  if [[ "${margin_ec}" -ne 0 ]]; then
+    echo "WARN: supplier margin monitor exited ${margin_ec} (non-fatal)"
+    if ! grep -q '^SUPPLIER_MARGIN_MONITOR_STATUS=' "${LOG_FILE}" 2>/dev/null; then
+      echo "SUPPLIER_MARGIN_MONITOR_STATUS=failed evaluated=0 errors=1"
+    fi
+  fi
+else
+  echo "[step 04d] Supplier margin protection skipped (SKIP_SUPPLIER_MARGIN_PROTECTION=1)"
 fi
 
 # Step 04e — Region B film pricing-health (READ-ONLY; non-fatal)

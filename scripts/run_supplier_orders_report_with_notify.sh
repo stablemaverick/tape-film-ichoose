@@ -129,6 +129,21 @@ set -e
 if [[ "${exit_code}" -eq 0 ]]; then
   # World-readable CSVs so FTP user tapester can download.
   chmod a+r "${REPORT_DIR}"/*.csv 2>/dev/null || true
+  # D-5 retention for THIS report series only (after successful generation).
+  # Applies by default; set SUPPLIER_ORDERS_RETENTION_APPLY=0 for dry-run only.
+  set +e
+  RETENTION_ARGS=(--dir "${REPORT_DIR}")
+  if [[ "${SUPPLIER_ORDERS_RETENTION_APPLY:-1}" == "1" ]]; then
+    RETENTION_ARGS+=(--apply)
+  fi
+  "${VENV_PYTHON}" scripts/maintenance/cleanup_supplier_orders_report_retention.py \
+    "${RETENTION_ARGS[@]}" >>"${ROOT}/logs/cron_supplier_orders_report.log" 2>&1
+  retention_ec=$?
+  set -e
+  if [[ "${retention_ec}" -ne 0 ]]; then
+    echo "[${JOB_LABEL}] WARN: retention exited ${retention_ec}" >&2
+    "${NOTIFY}" "⚠️ ${JOB_LABEL} retention warning host=${HOST} exit_code=${retention_ec}"
+  fi
   # Drop the SUCCESS JSON line; keep the multi-line summary after it.
   summary="$(printf '%s\n' "${slack_body}" | sed -n '/^📦 supplier orders needed/,$p')"
   if [[ -z "${summary}" ]]; then
