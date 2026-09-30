@@ -64,6 +64,10 @@ supplier_files/
 
 # Local tooling
 google-cloud-sdk/
+.gcloud-tmp/
+
+# Local scratch (previews, page scrapes, downloaded assets)
+.tmp-*
 
 # TMDB live harness output (may contain large payloads; never commit API keys in URLs)
 tests/tmdb_harness/output/
