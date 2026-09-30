@@ -30,10 +30,11 @@ from app.helpers.text_helpers import chunked, clean_text
 from app.services.shopify_inventory_settings_audit import parse_shopify_bool_metafield
 from app.services.supplier_po_inbound import (
     allocate_po_cover_for_variant,
+    build_shopify_sku_keys,
     build_shopify_title_keys,
     collect_unmatched_po_lines,
     load_po_inbound_snapshot,
-    remaining_title_qty_map,
+    remaining_line_qty_map,
     write_unmatched_csv,
 )
 
@@ -611,31 +612,44 @@ def apply_po_cover_to_candidates(
     inbound_dir: Optional[Path],
 ) -> Tuple[List[SupplierOrderRow], List[SupplierOrderRow], Dict[str, Any]]:
     """
-    Net open PO qty against Shopify need via fuzzy title match.
+    Net open PO qty against Shopify need via SKU first, then fuzzy title.
 
     Fully covered titles (still_needed == 0) stay on the report so matches are
     visible via open_po_qty (full matched PO total) / po_title / po_match.
     """
     snapshot = load_po_inbound_snapshot(inbound_dir)
     shopify_title_keys = build_shopify_title_keys(all_variants)
-    remaining_title = remaining_title_qty_map(snapshot)
+    shopify_sku_keys = build_shopify_sku_keys(all_variants)
+    remaining_lines = remaining_line_qty_map(snapshot)
 
     matched_title_keys: set[str] = set()
+    matched_sku_keys: set[str] = set()
     preorder_rows: List[SupplierOrderRow] = []
     other_rows: List[SupplierOrderRow] = []
     covered_units = 0
 
     for c in candidates:
-        applied, po_match, po_order_ids, matched_po_key, po_title, open_po_qty = (
-            allocate_po_cover_for_variant(
-                product_title=c.product_title,
-                shopify_need=c.shopify_need,
-                remaining_title_qty=remaining_title,
-                by_title=snapshot.by_title,
-            )
+        (
+            applied,
+            po_match,
+            po_order_ids,
+            matched_sku_key,
+            matched_title_key,
+            po_title,
+            open_po_qty,
+        ) = allocate_po_cover_for_variant(
+            product_title=c.product_title,
+            shopify_need=c.shopify_need,
+            remaining_line_qty=remaining_lines,
+            lines=snapshot.lines,
+            by_sku=snapshot.by_sku,
+            by_title=snapshot.by_title,
+            sku=c.sku,
         )
-        if matched_po_key:
-            matched_title_keys.add(matched_po_key)
+        if matched_sku_key:
+            matched_sku_keys.add(matched_sku_key)
+        if matched_title_key:
+            matched_title_keys.add(matched_title_key)
 
         still_needed = max(0, c.shopify_need - applied)
         covered_units += applied
@@ -682,7 +696,9 @@ def apply_po_cover_to_candidates(
     unmatched = collect_unmatched_po_lines(
         snapshot,
         matched_title_keys=matched_title_keys,
+        matched_sku_keys=matched_sku_keys,
         shopify_title_keys=shopify_title_keys,
+        shopify_sku_keys=shopify_sku_keys,
     )
 
     po_meta: Dict[str, Any] = {

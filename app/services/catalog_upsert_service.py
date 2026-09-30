@@ -123,6 +123,54 @@ class RetryStats:
     retries: int = 0
 
 
+def _stock_update_mode() -> str:
+    """bulk (default) or per_row rollback path."""
+    raw = (os.getenv("CATALOG_STOCK_UPDATE_MODE") or "bulk").strip().lower()
+    return "per_row" if raw in {"per_row", "per-row", "row"} else "bulk"
+
+
+def _stock_bulk_batch_size(default: int = 500) -> int:
+    raw = (os.getenv("CATALOG_STOCK_BULK_BATCH_SIZE") or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, min(2000, int(raw)))
+    except ValueError:
+        return default
+
+
+def _flush_print(*args: Any, **kwargs: Any) -> None:
+    kwargs.setdefault("flush", True)
+    print(*args, **kwargs)
+
+
+STOCK_BULK_PAYLOAD_KEYS = (
+    "supplier_stock_status",
+    "availability_status",
+    "cost_price",
+    "calculated_sale_price",
+    "supplier_sku",
+    "supplier_last_seen_at",
+)
+
+
+def _stock_bulk_row_payload(catalog_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Fixed-key row for bulk_update_catalog_stock_fields (no arbitrary columns)."""
+    row: Dict[str, Any] = {"id": catalog_id}
+    for key in STOCK_BULK_PAYLOAD_KEYS:
+        row[key] = payload.get(key)
+    # catalog_items.supplier_stock_status is text — send numeric string
+    stock = row.get("supplier_stock_status")
+    if stock is None:
+        row["supplier_stock_status"] = "0"
+    else:
+        try:
+            row["supplier_stock_status"] = str(int(stock))
+        except (TypeError, ValueError):
+            row["supplier_stock_status"] = str(stock)
+    return row
+
+
 def execute_with_retry(
     query,
     max_retries: int = 6,
@@ -247,12 +295,37 @@ def apply_stock_sync_row_updates(
     *,
     stats: RetryStats,
     progress_every: int = 500,
+    batch_size: Optional[int] = None,
+    update_mode: Optional[str] = None,
 ) -> int:
     """
-    PATCH catalog_items by primary key only (no upsert).
-    `rows` must already be filtered to ids that exist.
+    Update catalog_items by primary key only (no upsert / no inserts).
+
+    Default mode is bulk RPC (bulk_update_catalog_stock_fields). Set
+    CATALOG_STOCK_UPDATE_MODE=per_row to restore one-PATCH-per-row rollback path.
     """
+    mode = (update_mode or _stock_update_mode()).strip().lower()
+    if mode == "per_row":
+        return _apply_stock_sync_row_updates_per_row(
+            supabase, rows, stats=stats, progress_every=progress_every
+        )
+    return _apply_stock_sync_row_updates_bulk(
+        supabase,
+        rows,
+        stats=stats,
+        batch_size=batch_size if batch_size is not None else _stock_bulk_batch_size(),
+    )
+
+
+def _apply_stock_sync_row_updates_per_row(
+    supabase,
+    rows: List[Tuple[str, Dict[str, Any]]],
+    *,
+    stats: RetryStats,
+    progress_every: int = 500,
+) -> int:
     total = len(rows)
+    _flush_print(f"[stock-sync step4] write mode=per_row rows={total}")
     for idx, (catalog_id, payload) in enumerate(rows, 1):
         q = supabase.table("catalog_items").update(payload).eq("id", catalog_id)
         execute_with_retry(
@@ -261,8 +334,83 @@ def apply_stock_sync_row_updates(
             stats=stats,
         )
         if idx % progress_every == 0:
-            print(f"  stock updated {idx}/{total}…")
+            _flush_print(f"  stock updated {idx}/{total}…")
         time.sleep(0.002)
+    return total
+
+
+def _apply_stock_sync_row_updates_bulk(
+    supabase,
+    rows: List[Tuple[str, Dict[str, Any]]],
+    *,
+    stats: RetryStats,
+    batch_size: int = 500,
+) -> int:
+    total = len(rows)
+    if total == 0:
+        _flush_print("[stock-sync step4] write mode=bulk rows=0")
+        return 0
+
+    size = max(1, batch_size)
+    batches = list(chunked(rows, size))
+    batch_latencies_ms: List[float] = []
+    attempted_total = 0
+    updated_total = 0
+
+    _flush_print(
+        f"[stock-sync step4] write mode=bulk rows={total} "
+        f"batch_size={size} batches={len(batches)}"
+    )
+
+    for batch_index, batch in enumerate(batches):
+        payload = [_stock_bulk_row_payload(cid, pl) for cid, pl in batch]
+        t0 = time.perf_counter()
+
+        def _rpc_query():
+            return supabase.rpc(
+                "bulk_update_catalog_stock_fields",
+                {"payload": payload},
+            )
+
+        # execute_with_retry expects an object with .execute(); wrap rpc builder.
+        class _RpcExec:
+            def execute(self_inner):
+                return _rpc_query().execute()
+
+        resp = execute_with_retry(
+            _RpcExec(),
+            label=f"stock catalog_items bulk batch {batch_index + 1}/{len(batches)} "
+            f"({len(payload)} rows)",
+            stats=stats,
+        )
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        batch_latencies_ms.append(elapsed_ms)
+
+        data = getattr(resp, "data", None)
+        if isinstance(data, list) and data:
+            data = data[0]
+        if not isinstance(data, dict):
+            data = {}
+        attempted = int(data.get("attempted") or len(payload))
+        updated = int(data.get("updated") or 0)
+        attempted_total += attempted
+        updated_total += updated
+
+        _flush_print(
+            f"  bulk batch {batch_index + 1}/{len(batches)} "
+            f"size={len(payload)} attempted={attempted} updated={updated} "
+            f"elapsed_ms={elapsed_ms:.0f}"
+        )
+
+    avg_ms = (
+        sum(batch_latencies_ms) / len(batch_latencies_ms) if batch_latencies_ms else 0.0
+    )
+    _flush_print(
+        f"[stock-sync step4] bulk summary: rpc_batches={len(batches)} "
+        f"attempted={attempted_total} updated={updated_total} "
+        f"avg_batch_ms={avg_ms:.0f} retries={stats.retries}"
+    )
+    # Caller expects number of update targets submitted (verified rows).
     return total
 
 
@@ -576,21 +724,23 @@ def run_upsert(
             progress_every=500,
         )
         t_updates = time.perf_counter() - t3
-        print(
-            f"[{mode_label} step4] API per-row updates: {t_updates:.2f}s "
-            f"({total_u} calls, {retry_stats.retries} retries)",
+        write_mode = _stock_update_mode()
+        _flush_print(
+            f"[{mode_label} step4] API catalog updates: {t_updates:.2f}s "
+            f"(mode={write_mode}, rows={total_u}, {retry_stats.retries} retries)",
         )
         total_dur = time.perf_counter() - t_step4_start
-        print("")
-        print("Step 4 stock update summary")
-        print(f"- considered: {considered_updates}")
-        print(f"- changed: {updated}")
-        print(f"- unchanged skipped: {unchanged_skipped}")
-        print(f"- skipped missing catalog id: {skipped_missing_id}")
-        print(f"- update calls: {updated}")
-        print(f"- retries: {retry_stats.retries}")
-        print(f"- duration: {fmt_hhmmss(total_dur)}")
-        print("")
+        _flush_print("")
+        _flush_print("Step 4 stock update summary")
+        _flush_print(f"- write_mode: {write_mode}")
+        _flush_print(f"- considered: {considered_updates}")
+        _flush_print(f"- changed: {updated}")
+        _flush_print(f"- unchanged skipped: {unchanged_skipped}")
+        _flush_print(f"- skipped missing catalog id: {skipped_missing_id}")
+        _flush_print(f"- update calls/rows: {updated}")
+        _flush_print(f"- retries: {retry_stats.retries}")
+        _flush_print(f"- duration: {fmt_hhmmss(total_dur)}")
+        _flush_print("")
     else:
         total_updates = len(updates)
         for idx, (catalog_id, payload) in enumerate(updates, 1):
@@ -598,15 +748,15 @@ def run_upsert(
             execute_with_retry(q, label=f"update {idx}/{total_updates}", stats=retry_stats)
             updated += 1
             if idx % 500 == 0:
-                print(f"  updated {idx}/{total_updates}…")
+                _flush_print(f"  updated {idx}/{total_updates}…")
             time.sleep(0.002)
         t_updates = time.perf_counter() - t3
-        print(
+        _flush_print(
             f"[{mode_label} step4] API per-row updates: {t_updates:.2f}s "
             f"({total_updates} calls, {retry_stats.retries} retries)",
         )
 
-    print(f"Operational sync complete. inserted={inserted} updated={updated} offers_total={len(offers)}")
+    _flush_print(f"Operational sync complete. inserted={inserted} updated={updated} offers_total={len(offers)}")
 
 
 def run_from_argv(argv: Optional[list[str]] = None) -> int:

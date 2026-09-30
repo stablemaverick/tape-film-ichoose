@@ -1,0 +1,391 @@
+{
+  "known_location_id": "gid://shopify/Location/78213775584",
+  "discovered_location_ids": [
+    "gid://shopify/Location/78213775584"
+  ],
+  "samples": [
+    {
+      "bucket": "positive_stock",
+      "title": "Hush Limited Edition 4K Ultra HD",
+      "shopify_variant_id": "gid://shopify/ProductVariant/52373579596000",
+      "barcode": "5027035030333",
+      "release_variant_id": "f35176c1-16b1-4093-aee4-d0c7c093890b",
+      "listing_inventory_quantity": 7,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 7,
+        "committed": 0,
+        "on_hand": 7,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 7,
+        "committed": 0,
+        "available": 7,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 7,
+            "committed": 0,
+            "on_hand": 7,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "zero_stock",
+      "title": "The Bride! Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+      "shopify_variant_id": "gid://shopify/ProductVariant/48910376730848",
+      "barcode": "5051892257503",
+      "release_variant_id": "adcb51aa-9c39-440b-bcd0-0ff72dd47bfd",
+      "listing_inventory_quantity": 0,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 0,
+        "committed": 0,
+        "on_hand": 0,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 0,
+        "committed": 0,
+        "available": 0,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 0,
+            "committed": 0,
+            "on_hand": 0,
+            "incoming": 0
+          }
+        },
+        {
+          "location_id": "gid://shopify/Location/78377091296",
+          "quantities": {
+            "available": 0,
+            "committed": 0,
+            "on_hand": 0,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "continue_nonpositive",
+      "title": "Good Luck Have Fun Dont Die 4K Ultra HD",
+      "shopify_variant_id": "gid://shopify/ProductVariant/52624804905184",
+      "barcode": "5017239153495",
+      "release_variant_id": "95b4ea20-d5ba-472d-8be8-50dc93a2ee1b",
+      "listing_inventory_quantity": 0,
+      "inventory_policy": "CONTINUE",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 0,
+        "committed": 0,
+        "on_hand": 0,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 0,
+        "committed": 0,
+        "available": 0,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 0,
+            "committed": 0,
+            "on_hand": 0,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "preorder_candidate",
+      "title": "Eyes Wide Shut Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+      "shopify_variant_id": "gid://shopify/ProductVariant/51285564489952",
+      "barcode": "5051892257688",
+      "release_variant_id": "6812b6e4-5c5b-45a8-af5e-d0b2de5cb7af",
+      "listing_inventory_quantity": 4,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 4,
+        "committed": 1,
+        "on_hand": 5,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 5,
+        "committed": 1,
+        "available": 4,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 4,
+            "committed": 1,
+            "on_hand": 5,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "The Fantastic Four: First Steps Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47790073938144",
+      "barcode": "5056719201561",
+      "release_variant_id": "10dc5748-4bde-4461-b730-4055ba6065a8",
+      "listing_inventory_quantity": 6,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 6,
+        "committed": 0,
+        "on_hand": 6,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 6,
+        "committed": 0,
+        "available": 6,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 6,
+            "committed": 0,
+            "on_hand": 6,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "The Rocky Horror Picture Show Limited Edition Steelbook 4K Ultra HD + Blu-Ray (UK Version)",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47697075568864",
+      "barcode": "5056719201592",
+      "release_variant_id": "82205b18-cc5d-4d13-8f4a-96f4ff567e04",
+      "listing_inventory_quantity": 6,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 6,
+        "committed": 0,
+        "on_hand": 6,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 6,
+        "committed": 0,
+        "available": 6,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 6,
+            "committed": 0,
+            "on_hand": 6,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "Westworld (1973) Limited Edition 4K Ultra HD",
+      "shopify_variant_id": "gid://shopify/ProductVariant/48197273649376",
+      "barcode": "5027035029795",
+      "release_variant_id": "9ef32145-2bb5-4486-8224-d78e3f2c797b",
+      "listing_inventory_quantity": 5,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 5,
+        "committed": 0,
+        "on_hand": 5,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 5,
+        "committed": 0,
+        "available": 5,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 5,
+            "committed": 0,
+            "on_hand": 5,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "The Last Of Us Season 2 Limited Edition Steelbook 4K Ultra HD",
+      "shopify_variant_id": "gid://shopify/ProductVariant/47420563751136",
+      "barcode": "5051892255134",
+      "release_variant_id": "5633ca70-f1a9-4066-b8f7-206605b7b8c5",
+      "listing_inventory_quantity": 5,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 5,
+        "committed": 0,
+        "on_hand": 5,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 5,
+        "committed": 0,
+        "available": 5,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 5,
+            "committed": 0,
+            "on_hand": 5,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "The Ugly Stepsister Limited Edition 4K Ultra HD + Blu-Ray",
+      "shopify_variant_id": "gid://shopify/ProductVariant/48459292901600",
+      "barcode": "5028836042778",
+      "release_variant_id": "93296571-f5c2-4a7e-8eff-c50f6bba27de",
+      "listing_inventory_quantity": 5,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 5,
+        "committed": 0,
+        "on_hand": 5,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 5,
+        "committed": 0,
+        "available": 5,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 5,
+            "committed": 0,
+            "on_hand": 5,
+            "incoming": 0
+          }
+        }
+      ]
+    },
+    {
+      "bucket": "extra",
+      "title": "The Super Mario Galaxy Movie Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+      "shopify_variant_id": "gid://shopify/ProductVariant/52439486234848",
+      "barcode": "5061088923259",
+      "release_variant_id": "c24c751e-ca63-4f52-ae25-71c6b51c9061",
+      "listing_inventory_quantity": 5,
+      "inventory_policy": "DENY",
+      "tracks_inventory": true,
+      "shopify_level_at_known_location": {
+        "available": 5,
+        "committed": 0,
+        "on_hand": 5,
+        "incoming": 0
+      },
+      "projected_tape_inventory_levels": {
+        "shopify_location_id": "gid://shopify/Location/78213775584",
+        "on_hand": 5,
+        "committed": 0,
+        "available": 5,
+        "shopify_incoming_reported": 0
+      },
+      "available_eq_on_hand_minus_committed": true,
+      "all_location_levels": [
+        {
+          "location_id": "gid://shopify/Location/78213775584",
+          "quantities": {
+            "available": 5,
+            "committed": 0,
+            "on_hand": 5,
+            "incoming": 0
+          }
+        }
+      ]
+    }
+  ],
+  "location_scope_note": "Admin API lacks read_locations scope: location names/isActive cannot be read. Two location IDs exist. Sampled inventory predominantly at 78213775584; 78377091296 appears on some variants with zero quantities in samples.",
+  "product_status_counts_shopify_api": {
+    "active": 668,
+    "draft": 35,
+    "archived": 242
+  },
+  "shopify_listings_scope": "status:active only via store sync",
+  "oversold_example": {
+    "title": "The Complete Kubrick - Criterion Collection 4K UHD (US Edition)",
+    "listing_inventory_quantity": -4,
+    "shopify_level_at_known_location": {
+      "available": -4,
+      "committed": 4,
+      "on_hand": 0,
+      "incoming": 0
+    },
+    "projected": {
+      "on_hand": 0,
+      "committed": 4,
+      "available": -4
+    },
+    "available_eq_on_hand_minus_committed": true,
+    "note": "Shopify inventoryQuantity on listing matches available; dual-write prefers detailed level quantities when fetched."
+  }
+}

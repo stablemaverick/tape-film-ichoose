@@ -37,6 +37,8 @@ def test_open_po_statuses():
     assert is_open_po_status("Pre-Order")
     assert is_open_po_status("picking")
     assert is_open_po_status("Awaiting Stock")
+    assert is_open_po_status("Awaiting Stock.")  # trailing punctuation
+    assert is_open_po_status("Allocated")
     assert not is_open_po_status("Shipped")
     assert not is_open_po_status("Cancelled")
 
@@ -51,6 +53,8 @@ def test_parse_and_aggregate_sums_by_sku(tmp_path: Path):
                 "2,AMSSB10006,Project Hail Mary LE,5,33.42,167.10,Pre-Order",
                 "3,OTHER,Ignored Title,9,1,9,Shipped",
                 "4,,Title Only Match,3,1,3,Picking",
+                "5,INCEPTION,Inception Steelbook,1,1,1,Awaiting Stock.",
+                "6,MISERY,Misery LE,2,1,2,Allocated",
             ]
         ),
         encoding="utf-8",
@@ -58,10 +62,12 @@ def test_parse_and_aggregate_sums_by_sku(tmp_path: Path):
     lines, errors, skipped = parse_po_csv(path)
     assert errors == []
     assert skipped == 1
-    assert len(lines) == 3
+    assert len(lines) == 5
     by_sku, by_title = aggregate_po_lines(lines)
     assert by_sku["amssb10006"].qty == 7
     assert by_sku["amssb10006"].order_ids == ["1", "2"]
+    assert by_sku["inception"].qty == 1
+    assert by_sku["misery"].qty == 2
     assert by_title["title only match"].qty == 3
 
 
@@ -200,10 +206,10 @@ def test_find_best_title_match_rejects_weak_cross_title_hits():
     assert reason3 == "ambiguous"
 
 
-def test_allocate_title_only_ignores_sku():
+def test_allocate_sku_first_then_title_fallback():
     from app.services.supplier_po_inbound import PoBucket, SupplierPoLine
 
-    # Same SKU on PO, but different title — must NOT cover via SKU.
+    # Same SKU on PO with a short title — must cover via SKU even when titles differ.
     line = SupplierPoLine(
         order_id="10",
         sku="ABC",
@@ -215,32 +221,66 @@ def test_allocate_title_only_ignores_sku():
         sku_key="abc",
         title_key="film on order",
     )
+    by_sku = {"abc": PoBucket()}
+    by_sku["abc"].add(line)
     by_title = {"film on order": PoBucket()}
     by_title["film on order"].add(line)
-    remaining_title = {"film on order": 4}
+    lines = [line]
+    remaining = {0: 4}
 
-    applied, match, oids, matched_key, po_title, open_po_qty = allocate_po_cover_for_variant(
+    applied, match, oids, matched_sku, matched_title, po_title, open_po_qty = allocate_po_cover_for_variant(
         sku="ABC",
         product_title="Completely Different Shopify Title",
         shopify_need=3,
-        remaining_title_qty=remaining_title,
+        remaining_line_qty=remaining,
+        lines=lines,
+        by_sku=by_sku,
         by_title=by_title,
     )
-    assert (applied, match, matched_key, po_title, open_po_qty) == (0, "", "", "", 0)
-    assert remaining_title["film on order"] == 4
+    assert (applied, match, matched_sku, open_po_qty) == (3, "sku", "abc", 4)
+    assert matched_title == ""
+    assert po_title == "Film On Order"
+    assert "10" in oids
+    assert remaining[0] == 1
 
-    applied2, match2, oids2, matched_key2, po_title2, open_po_qty2 = allocate_po_cover_for_variant(
-        sku="DIFFERENT-SKU",
-        product_title="Film On Order",
-        shopify_need=3,
-        remaining_title_qty=remaining_title,
-        by_title=by_title,
+    # Title-only fallback when SKU does not match.
+    line2 = SupplierPoLine(
+        order_id="11",
+        sku="OTHER",
+        title="Film On Order",
+        qty=4,
+        unit_cost="",
+        line_total="",
+        status="Pre-Order",
+        sku_key="other",
+        title_key="film on order",
     )
-    assert (applied2, match2, matched_key2) == (3, "title", "film on order")
+    by_sku2 = {"other": PoBucket()}
+    by_sku2["other"].add(line2)
+    by_title2 = {"film on order": PoBucket()}
+    by_title2["film on order"].add(line2)
+    remaining2 = {0: 4}
+    applied2, match2, oids2, matched_sku2, matched_title2, po_title2, open_po_qty2 = (
+        allocate_po_cover_for_variant(
+            sku="DIFFERENT-SKU",
+            product_title="Film On Order",
+            shopify_need=3,
+            remaining_line_qty=remaining2,
+            lines=[line2],
+            by_sku=by_sku2,
+            by_title=by_title2,
+        )
+    )
+    assert (applied2, match2, matched_sku2, matched_title2) == (
+        3,
+        "title",
+        "",
+        "film on order",
+    )
     assert po_title2 == "Film On Order"
-    assert open_po_qty2 == 4  # full PO bucket, not just applied
-    assert "10" in oids2
-    assert remaining_title["film on order"] == 1
+    assert open_po_qty2 == 4
+    assert "11" in oids2
+    assert remaining2[0] == 1
 
 
 def test_allocate_fuzzy_title_near_match():
@@ -259,23 +299,94 @@ def test_allocate_fuzzy_title_near_match():
             "28 Days Later Limited Edition Steelbook 4K Ultra HD 4K UHD"
         ),
     )
+    by_sku = {line.sku_key: PoBucket()}
+    by_sku[line.sku_key].add(line)
     by_title = {line.title_key: PoBucket()}
     by_title[line.title_key].add(line)
-    remaining_title = {line.title_key: 10}
+    remaining = {0: 10}
 
-    applied, match, oids, matched_key, po_title, open_po_qty = allocate_po_cover_for_variant(
-        product_title="28 Days Later Limited Edition Steelbook 4K Ultra HD",
-        shopify_need=4,
-        remaining_title_qty=remaining_title,
-        by_title=by_title,
+    applied, match, oids, matched_sku, matched_title, po_title, open_po_qty = (
+        allocate_po_cover_for_variant(
+            product_title="28 Days Later Limited Edition Steelbook 4K Ultra HD",
+            shopify_need=4,
+            remaining_line_qty=remaining,
+            lines=[line],
+            by_sku=by_sku,
+            by_title=by_title,
+            sku="DIFFERENT",  # force title path
+        )
     )
     assert applied == 4
     assert open_po_qty == 10  # full PO total
     assert match == "title_fuzzy"
-    assert matched_key == line.title_key
+    assert matched_sku == ""
+    assert matched_title == line.title_key
     assert po_title == line.title
     assert "413866" in oids
-    assert remaining_title[line.title_key] == 6
+    assert remaining[0] == 6
+
+
+def test_allocate_sku_then_title_for_remainder():
+    """Partial SKU cover should still draw from a fuzzy title match for the rest."""
+    from app.services.supplier_po_inbound import PoBucket, SupplierPoLine
+
+    short = SupplierPoLine(
+        order_id="LASGO",
+        sku="5055201855824",
+        title="Manhunter: The Final Cut",
+        qty=5,
+        unit_cost="",
+        line_total="",
+        status="Pre-Order",
+        sku_key="5055201855824",
+        title_key="manhunter: the final cut",
+    )
+    long = SupplierPoLine(
+        order_id="498",
+        sku="OTHERSKU",
+        title="Manhunter Limited Collectors Edition 4K Ultra HD 4K UHD",
+        qty=10,
+        unit_cost="",
+        line_total="",
+        status="Pre-Order",
+        sku_key="othersku",
+        title_key=normalize_match_key(
+            "Manhunter Limited Collectors Edition 4K Ultra HD 4K UHD"
+        ),
+    )
+    by_sku = {
+        short.sku_key: PoBucket(),
+        long.sku_key: PoBucket(),
+    }
+    by_sku[short.sku_key].add(short)
+    by_sku[long.sku_key].add(long)
+    by_title = {
+        short.title_key: PoBucket(),
+        long.title_key: PoBucket(),
+    }
+    by_title[short.title_key].add(short)
+    by_title[long.title_key].add(long)
+    remaining = {0: 5, 1: 10}
+
+    applied, match, oids, matched_sku, matched_title, po_title, open_po_qty = (
+        allocate_po_cover_for_variant(
+            product_title="Manhunter Limited Collectors Edition 4K Ultra HD",
+            shopify_need=14,
+            remaining_line_qty=remaining,
+            lines=[short, long],
+            by_sku=by_sku,
+            by_title=by_title,
+            sku="5055201855824",
+        )
+    )
+    assert applied == 14
+    assert match == "sku"
+    assert matched_sku == "5055201855824"
+    assert matched_title == long.title_key
+    assert open_po_qty == 15  # 5 sku + 10 title (no overlap)
+    assert remaining[0] == 0
+    assert remaining[1] == 1
+    assert "LASGO" in oids and "498" in oids
 
 
 def test_enrich_with_moovies_catalog_sku_replaces_shopify_sku():
@@ -345,17 +456,17 @@ def test_enrich_with_moovies_catalog_sku_replaces_shopify_sku():
     assert variants[1]["sku"] == "999"
 
 
-def test_po_cover_matches_by_title_not_enriched_sku(tmp_path: Path):
+def test_po_cover_matches_by_enriched_sku(tmp_path: Path):
     inbound = tmp_path / "inbound"
     inbound.mkdir()
     (inbound / "open_pos.csv").write_text(
         "order_id,sku,title,qty,unit_cost,line_total,status\n"
-        "1,AMSSB10006,Project Hail Mary,5,1,5,Pre-Order\n",
+        "1,AMSSB10006,Project Hail Mary (Steelbook),5,1,5,Pre-Order\n",
         encoding="utf-8",
     )
     candidates = [
         _ShopifyNeedCandidate(
-            product_title="Project Hail Mary",
+            product_title="Project Hail Mary Limited Edition Steelbook 4K Ultra HD",
             barcode="5051888281123",
             sku="5051888281123",
             shopify_need=8,
@@ -378,7 +489,7 @@ def test_po_cover_matches_by_title_not_enriched_sku(tmp_path: Path):
             "shopify_variant_id": "gid://shopify/ProductVariant/1",
             "sku": "5051888281123",
             "barcode": "5051888281123",
-            "product_title": "Project Hail Mary",
+            "product_title": "Project Hail Mary Limited Edition Steelbook 4K Ultra HD",
         }
     ]
     enrich_with_moovies_catalog_sku(
@@ -390,7 +501,7 @@ def test_po_cover_matches_by_title_not_enriched_sku(tmp_path: Path):
     assert pre[0].sku == "AMSSB10006"  # display enrichment still works
     assert pre[0].open_po_qty == 5
     assert pre[0].qty_to_order == 3
-    assert pre[0].po_match == "title"
+    assert pre[0].po_match == "sku"
     assert meta["unmatched_po_count"] == 0
 
 
@@ -439,7 +550,7 @@ def test_apply_po_cover_nets_still_needed(tmp_path: Path):
     assert pre[0].shopify_need == 8
     assert pre[0].open_po_qty == 5
     assert pre[0].qty_to_order == 3
-    assert pre[0].po_match == "title"
+    assert pre[0].po_match == "sku"
     assert meta["po_units_applied"] == 5
     assert meta["unmatched_po_count"] == 0
 
@@ -491,7 +602,7 @@ def test_apply_po_cover_fuzzy_title_from_inbound(tmp_path: Path):
     assert "4K UHD" in pre[0].po_title
 
 
-def test_sku_match_alone_does_not_cover(tmp_path: Path):
+def test_sku_match_covers_short_supplier_title(tmp_path: Path):
     inbound = tmp_path / "inbound"
     inbound.mkdir()
     (inbound / "open_pos.csv").write_text(
@@ -528,11 +639,11 @@ def test_sku_match_alone_does_not_cover(tmp_path: Path):
     ]
     pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
     assert len(pre) == 1
-    assert pre[0].open_po_qty == 0
-    assert pre[0].qty_to_order == 8
-    assert pre[0].po_match == ""
-    assert meta["po_units_applied"] == 0
-    assert meta["unmatched_po_count"] == 1
+    assert pre[0].open_po_qty == 5
+    assert pre[0].qty_to_order == 3
+    assert pre[0].po_match == "sku"
+    assert meta["po_units_applied"] == 5
+    assert meta["unmatched_po_count"] == 0
 
 
 def test_fully_covered_by_po_stays_on_report_with_zero_still_needed(tmp_path: Path):
@@ -574,9 +685,9 @@ def test_fully_covered_by_po_stays_on_report_with_zero_still_needed(tmp_path: Pa
     assert other == []
     assert len(pre) == 1
     assert pre[0].shopify_need == 8
-    assert pre[0].open_po_qty == 10  # full open PO total on matched title
+    assert pre[0].open_po_qty == 10  # full open PO total on matched sku
     assert pre[0].qty_to_order == 0
-    assert pre[0].po_match == "title"
+    assert pre[0].po_match == "sku"
     assert pre[0].po_title == "Project Hail Mary"
     assert meta["po_units_applied"] == 8
 
@@ -624,6 +735,56 @@ def test_open_po_qty_shows_full_bucket_when_need_is_smaller(tmp_path: Path):
     assert pre[0].qty_to_order == 0
     assert pre[0].po_match == "title_fuzzy"
     assert meta["po_units_applied"] == 1
+
+
+def test_sku_match_aggregates_short_and_long_titles(tmp_path: Path):
+    """Lasgo short title + Moovies long title under same SKU both cover need."""
+    inbound = tmp_path / "inbound"
+    inbound.mkdir()
+    (inbound / "open_pos.csv").write_text(
+        "\n".join(
+            [
+                "order_id,sku,title,qty,unit_cost,line_total,status",
+                "1,AMSSB10006,Project Hail Mary Limited Edition Steelbook 4K Ultra HD + Blu-Ray 4K UHD,9,1,9,Pre-Order",
+                "LASGO,AMSSB10006,Project Hail Mary (Steelbook),15,1,15,Pre-Order",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    candidates = [
+        _ShopifyNeedCandidate(
+            product_title="Project Hail Mary Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+            barcode="1",
+            sku="AMSSB10006",
+            shopify_need=23,
+            committed=23,
+            available=-23,
+            on_hand=0,
+            incoming=0,
+            inventory_policy="DENY",
+            is_preorder=True,
+            pre_order_metafield=True,
+            backorder_metafield=False,
+            media_release_date="2026-10-26",
+            product_status="ACTIVE",
+            shopify_product_id="gid://shopify/Product/1",
+            shopify_variant_id="gid://shopify/ProductVariant/1",
+        )
+    ]
+    variants = [
+        {
+            "shopify_variant_id": "gid://shopify/ProductVariant/1",
+            "sku": "AMSSB10006",
+            "product_title": "Project Hail Mary Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        }
+    ]
+    pre, other, meta = apply_po_cover_to_candidates(candidates, variants, inbound)
+    assert other == []
+    assert len(pre) == 1
+    assert pre[0].po_match == "sku"
+    assert pre[0].open_po_qty == 24
+    assert pre[0].qty_to_order == 0
+    assert meta["po_units_applied"] == 23
 
 
 def test_unmatched_po_when_title_unknown(tmp_path: Path):

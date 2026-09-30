@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-08-06T23:43:34.820555+00:00",
+  "project_ref": "vwbuwgfzksrzfmbqhqtn",
+  "root_cause_1000_row_limit": {
+    "cause": "PostgREST/Supabase default max-rows is 1000. The prior report used .limit(100000) and/or a single .execute() page, which cannot exceed the server max-rows. Fallback 'recent rows' path also returned at most one page (~1000), and only Moovies rows (listed first in the synthetic feed) were counted.",
+    "fix": "fetch_all() with .range(start, end) pagination until short page"
+  },
+  "coverage": {
+    "supplier_offers": {
+      "fetched": 24864,
+      "count_exact": 24864,
+      "complete": true
+    },
+    "supplier_sku_resolutions": {
+      "fetched": 24864,
+      "count_exact": 24864,
+      "complete": true
+    },
+    "release_variants": {
+      "fetched": 23745,
+      "count_exact": 23745,
+      "complete": true
+    }
+  },
+  "offers_by_supplier": {
+    "moovies": 17404,
+    "lasgo": 7460
+  },
+  "resolutions_by_status": {
+    "auto_accepted": 24864
+  },
+  "resolutions_by_method": {
+    "created_supplier_only": 23745,
+    "barcode_exact": 1119
+  },
+  "shared_barcodes_total": 1119,
+  "shared_barcode_same_release": 1119,
+  "shared_barcode_diff_release": 0,
+  "shared_barcode_unresolved": 0,
+  "shared_barcode_attr_conflict_excluded": 0,
+  "shared_barcode_eligible_for_deterministic_comparison": 1119,
+  "shared_barcode_same_release_rate": 1.0,
+  "suspected_duplicate_releases_count": 0,
+  "suspected_duplicate_releases_sample": [],
+  "suspected_false_merges_count": 0,
+  "suspected_false_merges_sample": [],
+  "attr_conflict_excluded_sample": [],
+  "resolver_sequence_as_implemented": [
+    "1. Active prior supplier_sku_resolutions (auto_accepted/manual) wins",
+    "2. Exact barcode lookup against release_variants.primary_barcode + variant_identifiers",
+    "3. Single barcode candidate \u2192 barcode_exact (auto_accept if confidence >= threshold)",
+    "4. Multiple barcode candidates \u2192 barcode_ambiguous / needs_review",
+    "5. No candidate \u2192 create supplier_only release (if flag on)",
+    "6. Within-batch pending_barcode_release dedupes creates for the same barcode",
+    "7. Cross-batch/cross-supplier convergence depends on barcode preload seeing earlier creates",
+    "8. Format/edition compatibility is NOT currently checked before barcode_exact merge",
+    "9. Offer identity remains (supplier_id, supplier_sku); release_variant_id is canonical"
+  ],
+  "needs_review_count": 0,
+  "production_readiness_gates": {
+    "coverage_complete": true,
+    "convergence_rate_ge_95pct": true,
+    "no_material_duplicate_pattern": true,
+    "no_material_false_merge_pattern": true,
+    "eligible_shared_barcodes": 1119
+  },
+  "recommendation": "READY TO RETEST"
+}

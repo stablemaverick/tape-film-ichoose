@@ -20,7 +20,7 @@ from app.config.inventory_dual_write import (
 from app.helpers.text_helpers import clean_text
 from app.rules.inventory_invariant_rules import validate_purchase_order_line
 from app.services.inventory_events_service import build_event_dedupe_key, emit_inventory_event
-from app.services.supplier_po_inbound import OPEN_PO_STATUSES, SupplierPoLine, normalize_match_key
+from app.services.supplier_po_inbound import SupplierPoLine, is_open_po_status, normalize_match_key
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def dual_write_purchase_orders(
                     stats["unmatched_releases"] += 1
 
                 qty = max(0, int(line.qty or 0))
-                open_status = normalize_match_key(line.status) in OPEN_PO_STATUSES
+                open_status = is_open_po_status(line.status)
                 confirmed = qty if open_status else 0
                 line_payload = {
                     "purchase_order_id": po_id,

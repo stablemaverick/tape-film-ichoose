@@ -76,6 +76,22 @@ class TestEventTyping:
             == "supplier_stock_decreased"
         )
 
+    def test_first_insert_no_price_event(self):
+        assert (
+            _event_type_for_change(
+                None,
+                {"availability_status": "in_stock", "reported_quantity": 3, "unit_cost": 9},
+            )
+            is None
+        )
+        assert (
+            _event_type_for_change(
+                {"availability_status": "in_stock", "reported_quantity": 3, "unit_cost": None},
+                {"availability_status": "in_stock", "reported_quantity": 3, "unit_cost": 9},
+            )
+            is None
+        )
+
     def test_dedupe_key_stable(self):
         a = build_event_dedupe_key("tape_stock_synced", release_variant_id="r1", fingerprint="1|0|1|0")
         b = build_event_dedupe_key("tape_stock_synced", release_variant_id="r1", fingerprint="1|0|1|0")

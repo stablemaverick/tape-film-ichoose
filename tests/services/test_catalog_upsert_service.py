@@ -105,8 +105,9 @@ def test_fetch_existing_catalog_item_ids_batches_and_filters():
     assert set(select_ops[0]._in_vals or []) | set(select_ops[1]._in_vals or []) == {"a", "b", "c", "d"}
 
 
-def test_missing_target_id_never_triggers_upsert_only_update_for_verified_rows():
+def test_missing_target_id_never_triggers_upsert_only_update_for_verified_rows(monkeypatch):
     """After existence filter, stock path must only PATCH rows that exist — no upsert."""
+    monkeypatch.setenv("CATALOG_STOCK_UPDATE_MODE", "per_row")
     sb = FakeSupabase(existing_catalog_ids={"keep-id"})
     stats = RetryStats()
     pending = [
@@ -186,6 +187,7 @@ def test_stock_commercial_fields_differ_includes_supplier_sku():
 
 def test_apply_stock_sync_row_updates_uses_execute_with_retry(monkeypatch):
     """Regression: row updates go through execute_with_retry like production."""
+    monkeypatch.setenv("CATALOG_STOCK_UPDATE_MODE", "per_row")
     calls: list[str] = []
 
     def fake_execute(q, max_retries: int = 6, label: str = "", stats=None):
@@ -200,6 +202,64 @@ def test_apply_stock_sync_row_updates_uses_execute_with_retry(monkeypatch):
     stats = RetryStats()
     apply_stock_sync_row_updates(sb, [("x", {"cost_price": 1})], stats=stats, progress_every=10_000)
     assert calls == ["stock catalog_items update 1/1"]
+
+
+def test_apply_stock_sync_row_updates_bulk_batches_rpc(monkeypatch):
+    from app.services.catalog_upsert_service import _stock_bulk_row_payload
+
+    monkeypatch.setenv("CATALOG_STOCK_UPDATE_MODE", "bulk")
+    monkeypatch.setenv("CATALOG_STOCK_BULK_BATCH_SIZE", "2")
+
+    rpc_payloads: list[list[dict]] = []
+
+    class _RpcResult:
+        def __init__(self, n: int):
+            self.data = {"attempted": n, "updated": n}
+
+    class _RpcBuilder:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def execute(self):
+            rpc_payloads.append(self.payload)
+            return _RpcResult(len(self.payload))
+
+    class FakeRpcClient:
+        def rpc(self, name: str, params: dict):
+            assert name == "bulk_update_catalog_stock_fields"
+            return _RpcBuilder(params["payload"])
+
+        def table(self, name: str):
+            raise AssertionError("bulk mode must not use table().update()")
+
+    rows = [
+        ("11111111-1111-4111-8111-111111111111", {"cost_price": 1.0, "supplier_stock_status": 1}),
+        ("22222222-2222-4222-8222-222222222222", {"cost_price": 2.0, "supplier_stock_status": 2}),
+        ("33333333-3333-4333-8333-333333333333", {"cost_price": 3.0, "supplier_stock_status": 3}),
+    ]
+    stats = RetryStats()
+    n = apply_stock_sync_row_updates(
+        FakeRpcClient(), rows, stats=stats, batch_size=2, update_mode="bulk"
+    )
+    assert n == 3
+    assert len(rpc_payloads) == 2
+    assert len(rpc_payloads[0]) == 2
+    assert len(rpc_payloads[1]) == 1
+    assert rpc_payloads[0][0]["id"] == rows[0][0]
+    assert set(rpc_payloads[0][0]) >= set(_stock_bulk_row_payload("x", {}).keys())
+
+
+def test_stock_bulk_row_payload_fixed_keys_only():
+    from app.services.catalog_upsert_service import STOCK_BULK_PAYLOAD_KEYS, _stock_bulk_row_payload
+
+    row = _stock_bulk_row_payload(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        {"cost_price": 9.5, "title": "IGNORE", "supplier_stock_status": None},
+    )
+    assert "title" not in row
+    assert set(row.keys()) == {"id", *STOCK_BULK_PAYLOAD_KEYS}
+    assert row["supplier_stock_status"] == "0"
+    assert row["cost_price"] == 9.5
 
 
 @dataclass

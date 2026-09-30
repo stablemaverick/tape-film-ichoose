@@ -2,8 +2,9 @@
 Load weekly open supplier PO CSVs and match lines to Shopify variants.
 
 Latest ``*.csv`` in the inbound folder is a full snapshot of open POs.
-Match: fuzzy normalized title only (SequenceMatcher ratio >= 0.75).
-SKU is parsed for continuity / unmatched export but is not used for matching.
+Match order:
+  1. Exact normalized SKU (covers short Lasgo/Alliance titles)
+  2. Fuzzy normalized title (SequenceMatcher ratio >= 0.75)
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ OPEN_PO_STATUSES = frozenset(
         "preorder",
         "picking",
         "awaiting stock",
+        "allocated",
     }
 )
 
@@ -92,9 +94,13 @@ def normalize_match_key(value: Any) -> str:
     return text
 
 
+def normalize_po_status_key(status: Any) -> str:
+    """Normalize status for open-PO checks (strip trailing punctuation)."""
+    return normalize_match_key(status).rstrip(".,;:!")
+
+
 def is_open_po_status(status: Any) -> bool:
-    key = normalize_match_key(status)
-    return key in OPEN_PO_STATUSES
+    return normalize_po_status_key(status) in OPEN_PO_STATUSES
 
 
 def find_latest_inbound_csv(inbound_dir: Path) -> Optional[Path]:
@@ -335,6 +341,67 @@ def build_shopify_title_keys(variants: Iterable[Dict[str, str]]) -> set[str]:
     return out
 
 
+def build_shopify_sku_keys(variants: Iterable[Dict[str, str]]) -> set[str]:
+    """Collect normalized Shopify SKUs from variant identity rows."""
+    out: set[str] = set()
+    for v in variants:
+        sku_key = normalize_match_key(v.get("sku"))
+        if sku_key:
+            out.add(sku_key)
+    return out
+
+
+def remaining_line_qty_map(snapshot: PoInboundSnapshot) -> Dict[int, int]:
+    """Per-line remaining qty keyed by index into ``snapshot.lines``."""
+    return {i: max(0, line.qty) for i, line in enumerate(snapshot.lines)}
+
+
+def _sum_remaining_for_sku(
+    lines: Sequence[SupplierPoLine],
+    remaining_line_qty: Dict[int, int],
+    sku_key: str,
+) -> int:
+    total = 0
+    for i, line in enumerate(lines):
+        if line.sku_key == sku_key:
+            total += max(0, remaining_line_qty.get(i, 0))
+    return total
+
+
+def _consume_line_qty(
+    indices: Sequence[int],
+    remaining_line_qty: Dict[int, int],
+    qty: int,
+) -> int:
+    """Consume up to ``qty`` across line indices; return amount consumed."""
+    left = max(0, qty)
+    applied = 0
+    for i in indices:
+        if left <= 0:
+            break
+        avail = max(0, remaining_line_qty.get(i, 0))
+        if avail <= 0:
+            continue
+        take = min(avail, left)
+        remaining_line_qty[i] = avail - take
+        left -= take
+        applied += take
+    return applied
+
+
+def _remaining_title_qty_from_lines(
+    lines: Sequence[SupplierPoLine],
+    remaining_line_qty: Dict[int, int],
+) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for i, line in enumerate(lines):
+        qty = max(0, remaining_line_qty.get(i, 0))
+        if qty <= 0 or not line.title_key:
+            continue
+        out[line.title_key] = out.get(line.title_key, 0) + qty
+    return out
+
+
 def build_shopify_match_indexes(
     variants: Iterable[Dict[str, str]],
 ) -> Tuple[Dict[str, str], Dict[str, str], set[str]]:
@@ -378,49 +445,103 @@ def allocate_po_cover_for_variant(
     *,
     product_title: str,
     shopify_need: int,
-    remaining_title_qty: Dict[str, int],
+    remaining_line_qty: Dict[int, int],
+    lines: Sequence[SupplierPoLine],
+    by_sku: Dict[str, PoBucket],
     by_title: Dict[str, PoBucket],
-    sku: str = "",  # unused; kept for call-site compatibility
-) -> Tuple[int, str, str, str, str, int]:
+    sku: str = "",
+) -> Tuple[int, str, str, str, str, str, int]:
     """
-    Consume open PO qty against one Shopify variant need via fuzzy title match.
+    Consume open PO qty against one Shopify variant need.
+
+    Match order: exact SKU, then fuzzy title for any remaining need.
 
     Returns
-    ``(qty_applied, po_match, po_order_ids, matched_po_title_key, po_title, open_po_qty)``.
+    ``(qty_applied, po_match, po_order_ids, matched_sku_key, matched_title_key,
+    po_title, open_po_qty)``.
 
-    ``qty_applied`` is how much of the PO is used to cover this Shopify need.
-    ``open_po_qty`` is the full open-PO total for the matched title (all inbound lines).
-    ``po_match`` is ``title`` (exact) or ``title_fuzzy`` (min_ratio <= score < 1.0).
-    ``po_title`` is the inbound CSV title text for the matched bucket.
+    ``po_match`` is ``sku``, ``title`` (exact), or ``title_fuzzy`` (SKU wins when both).
+    ``open_po_qty`` is the full open-PO total credited for display.
     """
-    del sku  # intentionally unused
     if shopify_need <= 0:
-        return 0, "", "", "", "", 0
+        return 0, "", "", "", "", "", 0
 
-    candidates = [k for k, qty in remaining_title_qty.items() if qty > 0]
-    matched_key, score, reason = find_best_title_match(product_title, candidates)
-    if not matched_key or reason:
-        return 0, "", "", "", "", 0
-
-    available = remaining_title_qty.get(matched_key, 0)
-    if available <= 0:
-        return 0, "", "", "", "", 0
-
-    applied = min(shopify_need, available)
-    remaining_title_qty[matched_key] = available - applied
-    bucket = by_title.get(matched_key)
-    match_label = "title" if score >= 1.0 else "title_fuzzy"
+    applied_total = 0
+    po_match = ""
+    matched_sku_key = ""
+    matched_title_key = ""
     po_title = ""
     open_po_total = 0
-    if bucket:
-        open_po_total = bucket.qty
-        if bucket.lines:
-            po_title = bucket.lines[0].title or ""
+    order_ids: List[str] = []
+
+    sku_key = normalize_match_key(sku)
+    if sku_key and sku_key in by_sku:
+        sku_indices = [
+            i
+            for i, line in enumerate(lines)
+            if line.sku_key == sku_key and remaining_line_qty.get(i, 0) > 0
+        ]
+        available = _sum_remaining_for_sku(lines, remaining_line_qty, sku_key)
+        if available > 0 and sku_indices:
+            take = min(shopify_need, available)
+            applied = _consume_line_qty(sku_indices, remaining_line_qty, take)
+            if applied > 0:
+                applied_total += applied
+                bucket = by_sku[sku_key]
+                po_match = "sku"
+                matched_sku_key = sku_key
+                open_po_total = bucket.qty
+                po_title = bucket.lines[0].title if bucket.lines else ""
+                order_ids = list(bucket.order_ids)
+
+    still_needed = shopify_need - applied_total
+    if still_needed > 0:
+        title_remaining = _remaining_title_qty_from_lines(lines, remaining_line_qty)
+        candidates = [k for k, qty in title_remaining.items() if qty > 0]
+        title_key, score, reason = find_best_title_match(product_title, candidates)
+        if title_key and not reason:
+            available = title_remaining.get(title_key, 0)
+            if available > 0:
+                title_indices = [
+                    i
+                    for i, line in enumerate(lines)
+                    if line.title_key == title_key and remaining_line_qty.get(i, 0) > 0
+                ]
+                applied = _consume_line_qty(
+                    title_indices, remaining_line_qty, min(still_needed, available)
+                )
+                if applied > 0:
+                    applied_total += applied
+                    bucket = by_title.get(title_key)
+                    matched_title_key = title_key
+                    title_label = "title" if score >= 1.0 else "title_fuzzy"
+                    if not po_match:
+                        po_match = title_label
+                        if bucket:
+                            open_po_total = bucket.qty
+                            if bucket.lines:
+                                po_title = bucket.lines[0].title or ""
+                    if bucket:
+                        for oid in bucket.order_ids:
+                            if oid and oid not in order_ids:
+                                order_ids.append(oid)
+                        if po_match == "sku":
+                            sku_title_overlap = sum(
+                                line.qty
+                                for line in bucket.lines
+                                if line.sku_key == sku_key
+                            )
+                            open_po_total += max(0, bucket.qty - sku_title_overlap)
+
+    if applied_total <= 0:
+        return 0, "", "", "", "", "", 0
+
     return (
-        applied,
-        match_label,
-        format_po_order_ids(bucket.order_ids if bucket else []),
-        matched_key,
+        applied_total,
+        po_match,
+        format_po_order_ids(order_ids),
+        matched_sku_key,
+        matched_title_key,
         po_title,
         open_po_total,
     )
@@ -429,7 +550,7 @@ def allocate_po_cover_for_variant(
 def remaining_qty_maps(
     snapshot: PoInboundSnapshot,
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
-    """Return (by_sku qty, by_title qty). SKU map is unused for matching."""
+    """Return (by_sku qty, by_title qty)."""
     return (
         {k: b.qty for k, b in snapshot.by_sku.items()},
         {k: b.qty for k, b in snapshot.by_title.items()},
@@ -445,16 +566,25 @@ def collect_unmatched_po_lines(
     *,
     matched_title_keys: set[str],
     shopify_title_keys: set[str],
+    matched_sku_keys: Optional[set[str]] = None,
+    shopify_sku_keys: Optional[set[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    PO lines that never uniquely fuzzy-matched a Shopify title.
+    PO lines that never uniquely matched a Shopify variant via SKU or title.
 
-    A line is matched if its title_key was used for cover, or it uniquely
-    fuzzy-matches (>= TITLE_MATCH_MIN_RATIO) a Shopify title (cover may already be consumed).
+    A line is matched if:
+    - its sku_key was used for cover, or exists on a Shopify variant, or
+    - its title_key was used for cover, or uniquely fuzzy-matches a Shopify title.
     Ambiguous multi-hit titles are reported as ``ambiguous_title``.
     """
+    matched_skus = matched_sku_keys or set()
+    shopify_skus = shopify_sku_keys or set()
     rows: List[Dict[str, Any]] = []
     for line in snapshot.lines:
+        if line.sku_key and (
+            line.sku_key in matched_skus or line.sku_key in shopify_skus
+        ):
+            continue
         if line.title_key and line.title_key in matched_title_keys:
             continue
 

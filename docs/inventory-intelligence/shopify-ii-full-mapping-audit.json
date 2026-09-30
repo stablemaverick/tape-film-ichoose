@@ -1,0 +1,577 @@
+{
+  "scope_note": "shopify_listings is populated by store sync with query status:active only. Draft/archived Shopify products are not in this table.",
+  "catalogue_stats": {
+    "total_shopify_variants_inspected": 681,
+    "mapped": 374,
+    "unmapped": 104,
+    "ambiguous": 0,
+    "missing_barcode": 203,
+    "by_status": {
+      "unmapped": 104,
+      "missing_barcode": 203,
+      "mapped_primary_barcode": 374
+    },
+    "total_shopify_products": 678,
+    "overall_mapping_pct": 54.92,
+    "barcode_bearing_variants": 478,
+    "barcode_bearing_mapped": 374,
+    "barcode_bearing_mapping_pct": 78.24
+  },
+  "product_status_in_listings": {
+    "ACTIVE": 681
+  },
+  "missing_barcode": {
+    "total": 203,
+    "by_category": {
+      "physical_media_missing_barcode": 165,
+      "other_or_unclear": 1,
+      "matched_catalog_but_no_barcode": 33,
+      "gift_card": 4
+    },
+    "should_map_estimate": 198,
+    "examples": {
+      "physical_media_missing_barcode": [
+        {
+          "product_title": "Dark Crystal Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/53247047074016",
+          "sku": null,
+          "match_status": "unmatched",
+          "inventory_quantity": 2
+        },
+        {
+          "product_title": "Picnic At Hanging Rock 4K Ultra HD",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/46843302019296",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 0
+        },
+        {
+          "product_title": "Midsommer Director's Cut 4K UHD (A24 Edition)",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/51431984070880",
+          "sku": null,
+          "match_status": "unmatched",
+          "inventory_quantity": 0
+        }
+      ],
+      "other_or_unclear": [
+        {
+          "product_title": "TEST Film - Hell or High Water (Not for Sale)",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/46225868521696",
+          "sku": null,
+          "match_status": "unmatched",
+          "inventory_quantity": 6
+        }
+      ],
+      "matched_catalog_but_no_barcode": [
+        {
+          "product_title": "Twin Peaks: Fire Walk With Me (Music From the Motion Picture Soundtrack)",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/47042886238432",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 2
+        },
+        {
+          "product_title": "In the Heat of the Night - The Criterion Collection (US Edition)",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/47171275784416",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 1
+        },
+        {
+          "product_title": "Battle Royale",
+          "variant_title": "Default Title",
+          "shopify_variant_id": "gid://shopify/ProductVariant/46318162346208",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 0
+        }
+      ],
+      "gift_card": [
+        {
+          "product_title": "TAPE! Film Gift Card",
+          "variant_title": "$25.00",
+          "shopify_variant_id": "gid://shopify/ProductVariant/47892491108576",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 0
+        },
+        {
+          "product_title": "TAPE! Film Gift Card",
+          "variant_title": "$50.00",
+          "shopify_variant_id": "gid://shopify/ProductVariant/47892491141344",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 0
+        },
+        {
+          "product_title": "TAPE! Film Gift Card",
+          "variant_title": "$100.00",
+          "shopify_variant_id": "gid://shopify/ProductVariant/47892491174112",
+          "sku": null,
+          "match_status": "matched",
+          "inventory_quantity": 0
+        }
+      ]
+    }
+  },
+  "unmapped_with_barcode": {
+    "total": 104,
+    "by_cause": {
+      "barcode_absent_from_ii_and_catalog": 8,
+      "catalog_has_barcode_but_no_release_variant": 96
+    },
+    "examples": [
+      {
+        "product_title": "The Complete Kubrick - Criterion Collection 4K UHD (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53213474357472",
+        "barcode": "715515337717",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "715515337717",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "Salaam Bombay 4K - The Criterion Collection (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/48116661616864",
+        "barcode": "715515326117",
+        "catalog_item_id": "0c7790a5-a76d-4736-be9d-149f2bb84224",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "715515326117",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Sex And Fury / Female Yakuza Tale Limited Edition Blu-Ray",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/52373563146464",
+        "barcode": "5027035029429",
+        "catalog_item_id": "42415747-23cf-4ebd-9d2b-b83d12222075",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5027035029429",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "The Odyssey (Original Soundtrack)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53388489720032",
+        "barcode": "810155842253",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "810155842253",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "The Odyssey (Original Soundtrack)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53388499714272",
+        "barcode": "810155842260",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "810155842260",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "Manhunter Limited Collectors Edition 4K Ultra HD",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53503294406880",
+        "barcode": "5055201855824",
+        "catalog_item_id": "ff27bae2-361d-48c3-b4b8-8d0545fd30eb",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5055201855824",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Kill Bill: The Whole Bloody Affair 4K UHD (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53465493176544",
+        "barcode": "031398351191",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "031398351191",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "Videodrome Limited Edition 4K Ultra HD",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/49126345834720",
+        "barcode": "5027035025162",
+        "catalog_item_id": "89bc9bbf-7e2f-4ab7-adb6-4f94f2e59d32",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5027035025162",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 3,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Project Hail Mary Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53266855690464",
+        "barcode": "5061088922931",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "5061088922931",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "Videodrome 4K UHD - The Criterion Collection (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53557489467616",
+        "barcode": "715515287715",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "715515287715",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "The Silence Of The Lambs 4K UHD - The Criterion Collection (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53620679737568",
+        "barcode": "715515342414",
+        "catalog_item_id": null,
+        "match_status": "unmatched",
+        "cause": "barcode_absent_from_ii_and_catalog",
+        "details": {
+          "barcode": "715515342414",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 0,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "create_release_on_first_dual_write"
+      },
+      {
+        "product_title": "La Haine 4K Ultra HD",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47550499029216",
+        "barcode": "5022655000131",
+        "catalog_item_id": "d9ea4f86-4d34-4940-9538-73f4cb5fbcdf",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5022655000131",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 2,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Misericordia (Criterion Premieres) (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47793830625504",
+        "barcode": "715515320016",
+        "catalog_item_id": "fd0a85c6-80d1-4909-9d58-73aa5586c982",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "715515320016",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Wall-E 4K - The Criterion Collection 4K UHD (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/53558114287840",
+        "barcode": "715515279413",
+        "catalog_item_id": "d1af6f76-44c4-4f0b-b403-d764aab09b98",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "715515279413",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Jaws Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/52439486791904",
+        "barcode": "5061088922917",
+        "catalog_item_id": "d19e922e-7605-4f75-8ca9-cb166f28c79a",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5061088922917",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Hans Zimmer: The Classics Vinyl",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47751523238112",
+        "barcode": "0889853228119",
+        "catalog_item_id": "341136f9-768e-4cac-9ba6-2fffe4fc2091",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "0889853228119",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Catch-22 4K Ultra HD (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/48071050756320",
+        "barcode": "826663254341",
+        "catalog_item_id": "e2f8d611-2e83-4a8c-8c7b-c3a38120b033",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "826663254341",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "One Battle After Another Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47892264583392",
+        "barcode": "5051892257015",
+        "catalog_item_id": "6266d604-bee4-46b8-a0df-cb187e7e526d",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5051892257015",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Death Packs a Suitcase Blu-ray (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/48070968705248",
+        "barcode": "738329271497",
+        "catalog_item_id": "ff83866a-705f-4671-8ae2-d83d683b536e",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "738329271497",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Cairo Station  - The Criterion Collection (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47737555255520",
+        "barcode": "715515317511",
+        "catalog_item_id": "864e7d66-e875-4b6c-93e7-3af620965618",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "715515317511",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Monty Python's Life of Brian 4K UHD - The Criterion Collection (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/48732575727840",
+        "barcode": "715515332217",
+        "catalog_item_id": "3f7901b1-5947-49d2-b451-2b0cf754e225",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "715515332217",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Blue Thunder Limited Edition 4K UHD (US Import)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/48885128036576",
+        "barcode": "760137206606",
+        "catalog_item_id": "a45f451a-8e94-4891-8b04-a60befcd43b4",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "760137206606",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Jacobs Ladder Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47870932910304",
+        "barcode": "5055201854216",
+        "catalog_item_id": "a95b8a9c-229a-4780-9fd0-55e3c503afc3",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "5055201854216",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 2,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Quentin Tarantino's Once Upon A Time In Hollywood",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47601714135264",
+        "barcode": "190759819715",
+        "catalog_item_id": "bee64459-5047-4589-8775-d280baa1c628",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "190759819715",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      },
+      {
+        "product_title": "Happy Gilmore 4K Ultra HD (US Edition)",
+        "variant_title": "Default Title",
+        "shopify_variant_id": "gid://shopify/ProductVariant/47611481882848",
+        "barcode": "738329271022",
+        "catalog_item_id": "a330304a-1d4f-45f7-81b2-e7968b7170cd",
+        "match_status": "matched",
+        "cause": "catalog_has_barcode_but_no_release_variant",
+        "details": {
+          "barcode": "738329271022",
+          "primary_barcode_hits": 0,
+          "variant_identifier_hits": 0,
+          "catalog_barcode_hits": 1,
+          "alt_format_hits": []
+        },
+        "recommended_remediation": "link/create release_variant from catalog barcode (deterministic)"
+      }
+    ]
+  },
+  "ambiguous": {
+    "total": 0,
+    "examples": []
+  },
+  "baselines": {
+    "release_shopify_listings": 0,
+    "tape_inventory_levels": 0,
+    "release_variants": 14554,
+    "variant_identifiers": 14554,
+    "supplier_offers": 22686,
+    "shopify_listings": 681
+  },
+  "first_run_impact_estimate": {
+    "expected_release_shopify_listings_upserts": 681,
+    "expected_tape_inventory_levels_approx": 681,
+    "expected_skipped_ambiguous": 0,
+    "expected_new_release_variants_approx": 307,
+    "note": "Unmapped + missing-barcode variants create NEW release_variants on first dual-write (curated Shopify inbound). Ambiguous are skipped. Tape levels require SHOPIFY_INVENTORY_LOCATION_ID and tracked inventory item."
+  },
+  "location_env": null
+}

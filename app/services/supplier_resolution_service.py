@@ -25,6 +25,34 @@ from app.helpers.text_helpers import clean_text
 logger = logging.getLogger(__name__)
 
 
+def format_family(fmt: Optional[str]) -> str:
+    """Coarse format bucket for edition-safe barcode matching."""
+    t = (fmt or "").strip().casefold()
+    if not t:
+        return ""
+    if "4k" in t or "uhd" in t or "ultra hd" in t:
+        return "4k"
+    if "blu" in t:
+        return "bluray"
+    if "dvd" in t:
+        return "dvd"
+    return t
+
+
+def release_format_compatible(
+    offer_format: Optional[str], candidate_format: Optional[str]
+) -> bool:
+    """
+    Empty format on either side is treated as unknown (compatible).
+    Distinct families (e.g. 4K vs Blu-ray) are incompatible.
+    """
+    a = format_family(offer_format)
+    b = format_family(candidate_format)
+    if not a or not b:
+        return True
+    return a == b
+
+
 @dataclass(frozen=True)
 class ResolutionResult:
     release_variant_id: Optional[str]
@@ -134,21 +162,26 @@ def resolve_supplier_offer_to_release(
             )
 
     candidates = _find_releases_by_barcode(supabase, barcode) if barcode else []
-    if len(candidates) == 1:
+    compatible = [
+        c
+        for c in candidates
+        if release_format_compatible(format_name, c.get("format"))
+    ]
+    if len(compatible) == 1:
         conf = 0.98
         status = (
             "auto_accepted"
             if conf >= flags.auto_accept_min_confidence
             else "needs_review"
         )
-        rid = candidates[0]["id"] if status == "auto_accepted" else None
+        rid = compatible[0]["id"] if status == "auto_accepted" else None
         result = ResolutionResult(
             release_variant_id=rid,
             match_method="barcode_exact",
             match_confidence=conf,
             review_status=status,
             created_release=False,
-            notes="single barcode match",
+            notes="single barcode match (format-compatible)",
         )
         _upsert_resolution(
             supabase,
@@ -156,19 +189,19 @@ def resolve_supplier_offer_to_release(
             supplier_sku=sku,
             raw_barcode=barcode or None,
             result=result,
-            resolved_id=candidates[0]["id"] if status == "auto_accepted" else candidates[0]["id"],
+            resolved_id=compatible[0]["id"] if status == "auto_accepted" else None,
             store_resolved=(status == "auto_accepted"),
         )
         return result
 
-    if len(candidates) > 1:
+    if len(compatible) > 1:
         result = ResolutionResult(
             release_variant_id=None,
             match_method="barcode_ambiguous",
             match_confidence=0.4,
             review_status="needs_review",
             created_release=False,
-            notes=f"barcode maps to {len(candidates)} releases",
+            notes=f"barcode maps to {len(compatible)} format-compatible releases",
         )
         _upsert_resolution(
             supabase,
@@ -179,8 +212,7 @@ def resolve_supplier_offer_to_release(
             resolved_id=None,
             store_resolved=False,
         )
-        # Flag identifier conflicts
-        for c in candidates:
+        for c in compatible:
             try:
                 supabase.table("variant_identifiers").update({"conflict_flag": True}).eq(
                     "release_variant_id", c["id"]
@@ -189,7 +221,29 @@ def resolve_supplier_offer_to_release(
                 logger.exception("failed to flag barcode conflict release=%s", c.get("id"))
         return result
 
-    # No existing release
+    # Barcode hits exist but none are format-compatible → keep separate (create new)
+    # unless create flag is off (then needs_review).
+    if candidates and not compatible and not flags.create_supplier_only_releases:
+        result = ResolutionResult(
+            release_variant_id=None,
+            match_method="barcode_format_conflict",
+            match_confidence=0.2,
+            review_status="needs_review",
+            created_release=False,
+            notes="barcode matches existing release(s) but format conflicts",
+        )
+        _upsert_resolution(
+            supabase,
+            supplier_id=sid,
+            supplier_sku=sku,
+            raw_barcode=barcode or None,
+            result=result,
+            resolved_id=None,
+            store_resolved=False,
+        )
+        return result
+
+    # No compatible existing release
     if flags.create_supplier_only_releases:
         payload = {
             "film_id": film_id,

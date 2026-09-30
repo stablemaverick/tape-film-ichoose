@@ -1,0 +1,95 @@
+{
+  "generated_at": "2026-08-07T01:29:29.657209+00:00",
+  "project_ref": "vwbuwgfzksrzfmbqhqtn",
+  "rpc": {
+    "ok": true,
+    "data": {
+      "updated": 0,
+      "attempted": 0
+    }
+  },
+  "quiet": {
+    "mode": "bulk",
+    "rows": 400,
+    "elapsed_s": 0.765,
+    "ms_per_row": 1.91,
+    "retries": 0,
+    "batch_size": 500
+  },
+  "large": {
+    "mode": "bulk",
+    "rows": 4800,
+    "elapsed_s": 3.523,
+    "ms_per_row": 0.73,
+    "retries": 0,
+    "batch_size": 500
+  },
+  "per_row_sample": {
+    "mode": "per_row",
+    "rows": 50,
+    "elapsed_s": 11.299,
+    "ms_per_row": 225.98,
+    "retries": 0,
+    "extrapolated_4685_s": 1058.7
+  },
+  "projection": {
+    "skipped_when_flags_off": "skipped",
+    "first_write": {
+      "elapsed_s": 3.971,
+      "upserted": 200,
+      "observations_inserted": 200,
+      "events_inserted": 0,
+      "errors": 0,
+      "db_requests": 15
+    },
+    "idempotent_replay": {
+      "elapsed_s": 2.676,
+      "observations_inserted": 0,
+      "events_inserted": 0,
+      "offers_inserted": 0,
+      "errors": 0
+    },
+    "separation": {
+      "release_shopify_listings": 0,
+      "tape_inventory_levels": 0,
+      "purchase_orders": 0,
+      "purchase_order_lines": 0
+    }
+  },
+  "failure_isolation": {
+    "malformed_id": {
+      "ok": true,
+      "result": {
+        "updated": 0,
+        "attempted": 1
+      }
+    },
+    "malformed_id_no_collateral": true,
+    "projection_failure": {
+      "status": "failed",
+      "enabled": true,
+      "offers_loaded": 1,
+      "moovies_batch": "x",
+      "lasgo_batch": null,
+      "pipeline_run_id": null,
+      "stats": null,
+      "error": "forced projection failure",
+      "timing_ms": {
+        "load_staging": 0,
+        "total": 0
+      }
+    }
+  },
+  "acceptance": {
+    "rpc_present": true,
+    "bulk_not_linear_220ms": true,
+    "large_under_120s": true,
+    "bulk_faster_than_per_row": true,
+    "idempotent_no_new_obs": true,
+    "idempotent_no_new_events": true,
+    "no_shopify_tape_po": true,
+    "projection_failure_isolated": true,
+    "malformed_id_safe": true
+  },
+  "recommendation": "READY TO RETEST"
+}

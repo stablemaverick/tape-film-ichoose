@@ -1,0 +1,778 @@
+{
+  "generated_at": "2026-08-06T23:42:54.742624+00:00",
+  "project_ref": "vwbuwgfzksrzfmbqhqtn",
+  "offers_requested": 24864,
+  "batch_size": 500,
+  "marker": "perf-4971ba29",
+  "run1": {
+    "elapsed_seconds": 391.527,
+    "rows_per_second": 63.51,
+    "stats": {
+      "enabled": true,
+      "considered": 24864,
+      "upserted": 24864,
+      "offers_inserted": 24864,
+      "offers_updated": 0,
+      "observations_inserted": 24864,
+      "observations_skipped": 0,
+      "events_inserted": 0,
+      "resolutions_created_releases": 23745,
+      "releases_reused": 1119,
+      "needs_review": 0,
+      "skipped_identity": 0,
+      "blocked_mass_unavailable": false,
+      "errors": 0,
+      "batches": 50,
+      "db_requests": 1241,
+      "timing_ms": {
+        "preload": 196470,
+        "resolve": 454,
+        "releases_resolutions": 71558,
+        "offers": 34948,
+        "observations_events": 87679,
+        "total": 391290
+      },
+      "batch_results": [
+        {
+          "batch_index": 0,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 1,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 2,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 3,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 4,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 5,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 6,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 7,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 8,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 9,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 10,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 11,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 12,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 13,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 14,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 15,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 16,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 17,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 18,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 19,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 20,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 21,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 22,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 23,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 24,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 25,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 26,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 27,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 28,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 29,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 30,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 31,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 32,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 33,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 34,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 35,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 36,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 37,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 38,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 39,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 40,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 41,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 42,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 43,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 44,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 45,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 46,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 47,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 48,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 49,
+          "size": 364,
+          "ok": true,
+          "errors": 0
+        }
+      ],
+      "failed_batches": 0
+    },
+    "counts_before": {
+      "release_variants": 0,
+      "supplier_offers": 0,
+      "supplier_offer_observations": 0,
+      "supplier_sku_resolutions": 0,
+      "inventory_events": 0,
+      "release_shopify_listings": 0,
+      "tape_inventory_levels": 0,
+      "purchase_orders": 0,
+      "purchase_order_lines": 0
+    },
+    "counts_after": {
+      "release_variants": 23745,
+      "supplier_offers": 24864,
+      "supplier_offer_observations": 24864,
+      "supplier_sku_resolutions": 24864,
+      "inventory_events": 0,
+      "release_shopify_listings": 0,
+      "tape_inventory_levels": 0,
+      "purchase_orders": 0,
+      "purchase_order_lines": 0
+    }
+  },
+  "identity": {
+    "offers_by_supplier": {
+      "moovies": 17404,
+      "lasgo": 7460
+    },
+    "shared_barcode_same_release": 1119,
+    "shared_barcode_diff_release": 0,
+    "release_variants_delta": 23745,
+    "supplier_offers_delta": 24864
+  },
+  "idempotency_run2": {
+    "elapsed_seconds": 246.575,
+    "stats": {
+      "enabled": true,
+      "considered": 24864,
+      "upserted": 24864,
+      "offers_inserted": 0,
+      "offers_updated": 24864,
+      "observations_inserted": 0,
+      "observations_skipped": 24864,
+      "events_inserted": 0,
+      "resolutions_created_releases": 0,
+      "releases_reused": 24864,
+      "needs_review": 0,
+      "skipped_identity": 0,
+      "blocked_mass_unavailable": false,
+      "errors": 0,
+      "batches": 50,
+      "db_requests": 846,
+      "timing_ms": {
+        "preload": 213440,
+        "resolve": 61,
+        "releases_resolutions": 0,
+        "offers": 32709,
+        "observations_events": 0,
+        "total": 246314
+      },
+      "batch_results": [
+        {
+          "batch_index": 0,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 1,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 2,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 3,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 4,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 5,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 6,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 7,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 8,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 9,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 10,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 11,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 12,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 13,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 14,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 15,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 16,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 17,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 18,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 19,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 20,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 21,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 22,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 23,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 24,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 25,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 26,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 27,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 28,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 29,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 30,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 31,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 32,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 33,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 34,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 35,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 36,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 37,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 38,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 39,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 40,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 41,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 42,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 43,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 44,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 45,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 46,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 47,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 48,
+          "size": 500,
+          "ok": true,
+          "errors": 0
+        },
+        {
+          "batch_index": 49,
+          "size": 364,
+          "ok": true,
+          "errors": 0
+        }
+      ],
+      "failed_batches": 0
+    },
+    "count_deltas": {
+      "release_variants": 0,
+      "supplier_offers": 0,
+      "supplier_offer_observations": 0,
+      "supplier_sku_resolutions": 0,
+      "inventory_events": 0,
+      "release_shopify_listings": 0,
+      "tape_inventory_levels": 0,
+      "purchase_orders": 0,
+      "purchase_order_lines": 0
+    }
+  },
+  "changed_subset_run3": {
+    "elapsed_seconds": 2.184,
+    "stats": {
+      "enabled": true,
+      "considered": 25,
+      "upserted": 25,
+      "offers_inserted": 0,
+      "offers_updated": 25,
+      "observations_inserted": 25,
+      "observations_skipped": 0,
+      "events_inserted": 25,
+      "resolutions_created_releases": 0,
+      "releases_reused": 25,
+      "needs_review": 0,
+      "skipped_identity": 0,
+      "blocked_mass_unavailable": false,
+      "errors": 0,
+      "batches": 1,
+      "db_requests": 9,
+      "timing_ms": {
+        "preload": 939,
+        "resolve": 0,
+        "releases_resolutions": 0,
+        "offers": 247,
+        "observations_events": 993,
+        "total": 2181
+      },
+      "batch_results": [
+        {
+          "batch_index": 0,
+          "size": 25,
+          "ok": true,
+          "errors": 0
+        }
+      ],
+      "failed_batches": 0
+    },
+    "count_deltas": {
+      "release_variants": 0,
+      "supplier_offers": 0,
+      "supplier_offer_observations": 25,
+      "supplier_sku_resolutions": 0,
+      "inventory_events": 25,
+      "release_shopify_listings": 0,
+      "tape_inventory_levels": 0,
+      "purchase_orders": 0,
+      "purchase_order_lines": 0
+    }
+  },
+  "separation": {
+    "release_shopify_listings": 0,
+    "tape_inventory_levels": 0,
+    "purchase_orders": 0,
+    "purchase_order_lines": 0
+  },
+  "targets": {
+    "full_feed_under_10_min": true,
+    "full_feed_under_2x_5_min": true,
+    "preferred_near_5_min": false,
+    "idempotent_no_new_obs_events": true,
+    "no_baseline_price_events_on_first_insert": true
+  },
+  "recommendation": "READY TO RETEST"
+}

@@ -1,0 +1,1443 @@
+{
+  "generated_at": "2026-08-10T00:01:31.107532+00:00",
+  "supabase_url": "https://zdvjokkslhpoftimvdis.supabase.co",
+  "health": {
+    "release_variants": 14850,
+    "release_shopify_listings": 638,
+    "tape_inventory_levels": 638,
+    "supplier_offers": 22686,
+    "supplier_offers_active": 22686,
+    "supplier_offer_observations": 24659,
+    "inventory_events": 3045,
+    "shopify_listings": 682,
+    "product_domain_release_variants": {
+      "film": 0,
+      "music_vinyl": 29,
+      "other_or_null": 14821,
+      "total": 14850
+    },
+    "film_shopify_listing_rows_scanned": 638,
+    "music_vinyl_still_linked_to_shopify_listings": 0,
+    "music_vinyl_releases": 29
+  },
+  "cases": {
+    "A": {
+      "selection": {
+        "title": "True Romance - Blu-Ray",
+        "barcode": null,
+        "shopify_variant_id": "gid://shopify/ProductVariant/46318163493088",
+        "shopify_retail_price": 28.99,
+        "level": {
+          "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+          "on_hand": 1,
+          "committed": 0,
+          "available": 1,
+          "shopify_location_id": "gid://shopify/Location/78213775584",
+          "last_synced_at": "2026-08-09T23:14:45.068304+00:00"
+        }
+      },
+      "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 224.8384169943165,
+      "commerce_ms": 315.7392080174759,
+      "stock_summary": {
+        "title": "True Romance - Blu-Ray",
+        "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+        "barcode": null,
+        "preorder": false,
+        "tape": {
+          "on_hand": 1,
+          "committed": 0,
+          "available": 1,
+          "status": "available",
+          "is_stale": false,
+          "observed_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "suppliers": [],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": 1,
+          "tape_status": "available",
+          "supplier_available": false,
+          "preferred_supplier_id": null,
+          "preferred_supplier_name": null,
+          "preferred_supplier_sku": null
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+        "title": "True Romance - Blu-Ray",
+        "listing_type": "shopify",
+        "sellable": true,
+        "customer_status": "in_stock",
+        "retail_price": 28.99,
+        "currency": "AUD",
+        "pricing_source": "shopify",
+        "fulfilment": {
+          "type": "tape",
+          "preferred_supplier_id": null,
+          "preferred_supplier_sku": null,
+          "unit_cost": null
+        },
+        "stock_summary": {
+          "tape_available": 1,
+          "tape_status": "available",
+          "supplier_available": false
+        },
+        "margin_gate_passed": true,
+        "warnings": [
+          "NO_SUPPLIER_OFFERS"
+        ],
+        "shopify_variant_id": "gid://shopify/ProductVariant/46318163493088"
+      },
+      "commerce_public": {
+        "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+        "title": "True Romance - Blu-Ray",
+        "listing_type": "shopify",
+        "sellable": true,
+        "availability": "in_stock",
+        "price": 28.99,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+          "title": "True Romance - Blu-Ray",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "in_stock",
+          "price": 28.99,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {
+        "customer_status": "in_stock",
+        "pricing_source": "shopify"
+      },
+      "assertions": {
+        "customer_status": "in_stock",
+        "pricing_source": "shopify",
+        "listing_type": "shopify",
+        "tape_available": 1,
+        "public_availability": "in_stock",
+        "public_price": 28.99,
+        "matches_expected_status": true,
+        "price_source_ok": true,
+        "privacy_ok": true,
+        "shopify_price_equals_public": true
+      }
+    },
+    "B": {
+      "selection": {
+        "title": "An American Werewolf in London 4K UHD",
+        "barcode": "5027035024776",
+        "shopify_variant_id": "gid://shopify/ProductVariant/46286847377632",
+        "shopify_retail_price": 42.99,
+        "level": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "on_hand": 0,
+          "committed": 0,
+          "available": 0,
+          "shopify_location_id": "gid://shopify/Location/78213775584",
+          "last_synced_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "raw_offers": [
+          {
+            "id": "063b8813-6cf3-44ed-b225-3038a852b2a2",
+            "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "in_stock",
+            "reported_quantity": 2,
+            "unit_cost": 16.69,
+            "last_seen_at": "2026-08-09T21:29:15.807032+00:00",
+            "source_feed_at": "2026-08-09T21:29:15.807009+00:00",
+            "active": true,
+            "raw_barcode": "5027035024776"
+          },
+          {
+            "id": "ef3182f0-4148-4d91-bd92-31c4ff05e182",
+            "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "in_stock",
+            "reported_quantity": 9,
+            "unit_cost": 15.35,
+            "last_seen_at": "2026-08-09T19:02:28.446325+00:00",
+            "source_feed_at": "2026-08-09T19:02:28.446306+00:00",
+            "active": true,
+            "raw_barcode": "5027035024776"
+          }
+        ]
+      },
+      "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 180.30454200925305,
+      "commerce_ms": 270.92762498068623,
+      "stock_summary": {
+        "title": "An American Werewolf in London 4K UHD",
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "barcode": "5027035024776",
+        "preorder": false,
+        "tape": {
+          "on_hand": 0,
+          "committed": 0,
+          "available": 0,
+          "status": "sold_out",
+          "is_stale": false,
+          "observed_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "suppliers": [
+          {
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 15.35,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T19:02:28.446325+00:00"
+          },
+          {
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 16.69,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T21:29:15.807032+00:00"
+          }
+        ],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": true,
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_name": "Moovies",
+          "preferred_supplier_sku": "barcode:5027035024776"
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "title": "An American Werewolf in London 4K UHD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "customer_status": "available_from_supplier",
+        "retail_price": 42.99,
+        "currency": "AUD",
+        "pricing_source": "shopify",
+        "fulfilment": {
+          "type": "supplier",
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_sku": "barcode:5027035024776",
+          "unit_cost": 15.35
+        },
+        "stock_summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": true
+        },
+        "margin_gate_passed": true,
+        "warnings": [],
+        "shopify_variant_id": "gid://shopify/ProductVariant/46286847377632"
+      },
+      "commerce_public": {
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "title": "An American Werewolf in London 4K UHD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "availability": "available_from_supplier",
+        "price": 42.99,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "title": "An American Werewolf in London 4K UHD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 42.99,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {
+        "customer_status": "available_from_supplier",
+        "pricing_source": "shopify"
+      },
+      "assertions": {
+        "customer_status": "available_from_supplier",
+        "pricing_source": "shopify",
+        "listing_type": "shopify",
+        "tape_available": 0,
+        "public_availability": "available_from_supplier",
+        "public_price": 42.99,
+        "matches_expected_status": true,
+        "price_source_ok": true,
+        "privacy_ok": true,
+        "no_lasgo_moovies": true,
+        "shopify_price_equals_public": true
+      }
+    },
+    "C": {
+      "selection": {
+        "title": "Breathless - 4K (UHD)",
+        "barcode": null,
+        "shopify_variant_id": "gid://shopify/ProductVariant/46318161985760",
+        "level": {
+          "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+          "on_hand": 1,
+          "committed": 1,
+          "available": 0,
+          "shopify_location_id": "gid://shopify/Location/78213775584",
+          "last_synced_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "raw_offers": []
+      },
+      "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 210.56604199111462,
+      "commerce_ms": 274.58812500117347,
+      "stock_summary": {
+        "title": "Breathless - 4K (UHD)",
+        "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+        "barcode": null,
+        "preorder": false,
+        "tape": {
+          "on_hand": 1,
+          "committed": 1,
+          "available": 0,
+          "status": "sold_out",
+          "is_stale": false,
+          "observed_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "suppliers": [],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": false,
+          "preferred_supplier_id": null,
+          "preferred_supplier_name": null,
+          "preferred_supplier_sku": null
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+        "title": "Breathless - 4K (UHD)",
+        "listing_type": "shopify",
+        "sellable": false,
+        "customer_status": "out_of_stock",
+        "retail_price": 34.99,
+        "currency": "AUD",
+        "pricing_source": "shopify",
+        "fulfilment": {
+          "type": "none",
+          "preferred_supplier_id": null,
+          "preferred_supplier_sku": null,
+          "unit_cost": null
+        },
+        "stock_summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": false
+        },
+        "margin_gate_passed": true,
+        "warnings": [
+          "NO_SUPPLIER_OFFERS"
+        ],
+        "shopify_variant_id": "gid://shopify/ProductVariant/46318161985760"
+      },
+      "commerce_public": {
+        "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+        "title": "Breathless - 4K (UHD)",
+        "listing_type": "shopify",
+        "sellable": false,
+        "availability": "out_of_stock",
+        "price": 34.99,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+          "title": "Breathless - 4K (UHD)",
+          "listing_type": "shopify",
+          "sellable": false,
+          "availability": "out_of_stock",
+          "price": 34.99,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {
+        "customer_status": "out_of_stock",
+        "pricing_source": "shopify"
+      },
+      "assertions": {
+        "customer_status": "out_of_stock",
+        "pricing_source": "shopify",
+        "listing_type": "shopify",
+        "tape_available": 0,
+        "public_availability": "out_of_stock",
+        "public_price": 34.99,
+        "matches_expected_status": true,
+        "price_source_ok": true,
+        "privacy_ok": true
+      }
+    },
+    "D": {
+      "selection": {
+        "title": "The Addiction Limited Edition 4K Ultra HD",
+        "barcode": "5027035027715",
+        "shopify_variant_id": "gid://shopify/ProductVariant/46720518258912",
+        "level": {
+          "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+          "on_hand": 0,
+          "committed": 1,
+          "available": -1,
+          "shopify_location_id": "gid://shopify/Location/78213775584",
+          "last_synced_at": "2026-08-09T23:14:45.068304+00:00"
+        }
+      },
+      "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 227.19387500546873,
+      "commerce_ms": 291.1144589888863,
+      "stock_summary": {
+        "title": "The Addiction Limited Edition 4K Ultra HD",
+        "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+        "barcode": "5027035027715",
+        "preorder": false,
+        "tape": {
+          "on_hand": 0,
+          "committed": 1,
+          "available": -1,
+          "status": "oversold",
+          "is_stale": false,
+          "observed_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "suppliers": [
+          {
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5027035027715",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 16.81,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T19:02:28.446325+00:00"
+          },
+          {
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5027035027715",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 9.55,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T21:29:15.807032+00:00"
+          }
+        ],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": -1,
+          "tape_status": "oversold",
+          "supplier_available": true,
+          "preferred_supplier_id": "lasgo",
+          "preferred_supplier_name": "Lasgo",
+          "preferred_supplier_sku": "barcode:5027035027715"
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+        "title": "The Addiction Limited Edition 4K Ultra HD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "customer_status": "available_from_supplier",
+        "retail_price": 46.79,
+        "currency": "AUD",
+        "pricing_source": "shopify",
+        "fulfilment": {
+          "type": "supplier",
+          "preferred_supplier_id": "lasgo",
+          "preferred_supplier_sku": "barcode:5027035027715",
+          "unit_cost": 9.55
+        },
+        "stock_summary": {
+          "tape_available": -1,
+          "tape_status": "oversold",
+          "supplier_available": true
+        },
+        "margin_gate_passed": true,
+        "warnings": [],
+        "shopify_variant_id": "gid://shopify/ProductVariant/46720518258912"
+      },
+      "commerce_public": {
+        "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+        "title": "The Addiction Limited Edition 4K Ultra HD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "availability": "available_from_supplier",
+        "price": 46.79,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+          "title": "The Addiction Limited Edition 4K Ultra HD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 46.79,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {
+        "pricing_source": "shopify"
+      },
+      "assertions": {
+        "customer_status": "available_from_supplier",
+        "pricing_source": "shopify",
+        "listing_type": "shopify",
+        "tape_available": -1,
+        "public_availability": "available_from_supplier",
+        "public_price": 46.79,
+        "matches_expected_status": null,
+        "price_source_ok": true,
+        "privacy_ok": true,
+        "available_remains_negative": true,
+        "arithmetic_ok": true
+      }
+    },
+    "E": {
+      "selection": {
+        "title": "An American Werewolf in London 4K UHD",
+        "barcode": "5027035024776",
+        "shopify_variant_id": "gid://shopify/ProductVariant/46286847377632",
+        "raw_offers": [
+          {
+            "id": "063b8813-6cf3-44ed-b225-3038a852b2a2",
+            "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "in_stock",
+            "reported_quantity": 2,
+            "unit_cost": 16.69,
+            "last_seen_at": "2026-08-09T21:29:15.807032+00:00",
+            "source_feed_at": "2026-08-09T21:29:15.807009+00:00",
+            "active": true,
+            "raw_barcode": "5027035024776"
+          },
+          {
+            "id": "ef3182f0-4148-4d91-bd92-31c4ff05e182",
+            "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "in_stock",
+            "reported_quantity": 9,
+            "unit_cost": 15.35,
+            "last_seen_at": "2026-08-09T19:02:28.446325+00:00",
+            "source_feed_at": "2026-08-09T19:02:28.446306+00:00",
+            "active": true,
+            "raw_barcode": "5027035024776"
+          }
+        ],
+        "level": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "on_hand": 0,
+          "committed": 0,
+          "available": 0,
+          "shopify_location_id": "gid://shopify/Location/78213775584",
+          "last_synced_at": "2026-08-09T23:14:45.068304+00:00"
+        }
+      },
+      "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 196.00525000714697,
+      "commerce_ms": 242.7535419992637,
+      "stock_summary": {
+        "title": "An American Werewolf in London 4K UHD",
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "barcode": "5027035024776",
+        "preorder": false,
+        "tape": {
+          "on_hand": 0,
+          "committed": 0,
+          "available": 0,
+          "status": "sold_out",
+          "is_stale": false,
+          "observed_at": "2026-08-09T23:14:45.068304+00:00"
+        },
+        "suppliers": [
+          {
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 15.35,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T19:02:28.446325+00:00"
+          },
+          {
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5027035024776",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 16.69,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T21:29:15.807032+00:00"
+          }
+        ],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": true,
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_name": "Moovies",
+          "preferred_supplier_sku": "barcode:5027035024776"
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "title": "An American Werewolf in London 4K UHD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "customer_status": "available_from_supplier",
+        "retail_price": 42.99,
+        "currency": "AUD",
+        "pricing_source": "shopify",
+        "fulfilment": {
+          "type": "supplier",
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_sku": "barcode:5027035024776",
+          "unit_cost": 15.35
+        },
+        "stock_summary": {
+          "tape_available": 0,
+          "tape_status": "sold_out",
+          "supplier_available": true
+        },
+        "margin_gate_passed": true,
+        "warnings": [],
+        "shopify_variant_id": "gid://shopify/ProductVariant/46286847377632"
+      },
+      "commerce_public": {
+        "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+        "title": "An American Werewolf in London 4K UHD",
+        "listing_type": "shopify",
+        "sellable": true,
+        "availability": "available_from_supplier",
+        "price": 42.99,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "title": "An American Werewolf in London 4K UHD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 42.99,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {},
+      "assertions": {
+        "customer_status": "available_from_supplier",
+        "pricing_source": "shopify",
+        "listing_type": "shopify",
+        "tape_available": 0,
+        "public_availability": "available_from_supplier",
+        "public_price": 42.99,
+        "matches_expected_status": null,
+        "price_source_ok": null,
+        "privacy_ok": true,
+        "multi_supplier": true,
+        "independent_positions": true,
+        "public_hides_supplier_meta": true
+      }
+    },
+    "F": {
+      "selection": {
+        "title": "Creepozoids Blu-Ray",
+        "barcode": "5037899091425",
+        "offer_sample": {
+          "id": "f7aff494-fa64-48bd-9196-448159afe489",
+          "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+          "supplier_id": "lasgo",
+          "supplier_sku": "barcode:5037899091425",
+          "availability_status": "in_stock",
+          "reported_quantity": 1,
+          "unit_cost": 13.35,
+          "last_seen_at": "2026-08-09T21:29:15.807032+00:00",
+          "source_feed_at": "2026-08-09T21:29:15.807009+00:00",
+          "active": true
+        }
+      },
+      "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+      "stock_error": null,
+      "commerce_error": null,
+      "stock_ms": 176.9343750202097,
+      "commerce_ms": 207.70804199855775,
+      "stock_summary": {
+        "title": "Creepozoids Blu-Ray",
+        "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+        "barcode": "5037899091425",
+        "preorder": false,
+        "tape": {
+          "on_hand": null,
+          "committed": null,
+          "available": null,
+          "status": "unknown",
+          "is_stale": null,
+          "observed_at": null
+        },
+        "suppliers": [
+          {
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5037899091425",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 13.26,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T19:02:28.446325+00:00"
+          },
+          {
+            "supplier_id": "lasgo",
+            "supplier_sku": "barcode:5037899091425",
+            "availability_status": "available",
+            "offer_status": "in_stock",
+            "reported_quantity": null,
+            "unit_cost": 13.35,
+            "is_stale": false,
+            "feed_freshness": "fresh",
+            "observed_at": "2026-08-09T21:29:15.807032+00:00"
+          }
+        ],
+        "preferred_supplier": null,
+        "summary": {
+          "tape_available": null,
+          "tape_status": "unknown",
+          "supplier_available": true,
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_name": "Moovies",
+          "preferred_supplier_sku": "barcode:5037899091425"
+        }
+      },
+      "commerce_internal": {
+        "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+        "title": "Creepozoids Blu-Ray",
+        "listing_type": "agent_only",
+        "sellable": true,
+        "customer_status": "available_to_order",
+        "retail_price": 43.99,
+        "currency": "AUD",
+        "pricing_source": "supplier_pricing_policy",
+        "fulfilment": {
+          "type": "supplier",
+          "preferred_supplier_id": "moovies",
+          "preferred_supplier_sku": "barcode:5037899091425",
+          "unit_cost": 13.26
+        },
+        "quote": {
+          "quoted_price": 43.99,
+          "currency": "AUD",
+          "supplier_offer_ref": {
+            "supplier_id": "moovies",
+            "supplier_sku": "barcode:5037899091425"
+          },
+          "created_at": "2026-08-10T00:01:31.107530+00:00",
+          "expires_at": "2026-08-10T00:31:31.107530+00:00",
+          "pricing_policy_version": "gbp_formula_v1",
+          "quote_id": "c1baf567-2952-4460-98d6-0bee3ac98653"
+        },
+        "stock_summary": {
+          "tape_available": null,
+          "tape_status": "unknown",
+          "supplier_available": true
+        },
+        "warnings": [
+          "TAPE_INVENTORY_ABSENT"
+        ]
+      },
+      "commerce_public": {
+        "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+        "title": "Creepozoids Blu-Ray",
+        "listing_type": "agent_only",
+        "sellable": true,
+        "availability": "available_to_order",
+        "price": 43.99,
+        "currency": "AUD"
+      },
+      "privacy": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+          "title": "Creepozoids Blu-Ray",
+          "listing_type": "agent_only",
+          "sellable": true,
+          "availability": "available_to_order",
+          "price": 43.99,
+          "currency": "AUD"
+        }
+      },
+      "combined_inventory_tokens": [],
+      "expect": {
+        "customer_status": "available_to_order",
+        "pricing_source": "supplier_pricing_policy"
+      },
+      "assertions": {
+        "customer_status": "available_to_order",
+        "pricing_source": "supplier_pricing_policy",
+        "listing_type": "agent_only",
+        "tape_available": null,
+        "public_availability": "available_to_order",
+        "public_price": 43.99,
+        "matches_expected_status": true,
+        "price_source_ok": true,
+        "privacy_ok": true,
+        "listing_type_agent_only": true,
+        "no_shopify_variant": true
+      }
+    }
+  },
+  "privacy": {
+    "all_ok": true,
+    "by_case": {
+      "A": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+          "title": "True Romance - Blu-Ray",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "in_stock",
+          "price": 28.99,
+          "currency": "AUD"
+        }
+      },
+      "B": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "title": "An American Werewolf in London 4K UHD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 42.99,
+          "currency": "AUD"
+        }
+      },
+      "C": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+          "title": "Breathless - 4K (UHD)",
+          "listing_type": "shopify",
+          "sellable": false,
+          "availability": "out_of_stock",
+          "price": 34.99,
+          "currency": "AUD"
+        }
+      },
+      "D": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "87df4755-43c4-4073-aaa8-5141554e3918",
+          "title": "The Addiction Limited Edition 4K Ultra HD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 46.79,
+          "currency": "AUD"
+        }
+      },
+      "E": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "dfa0e286-ba8c-407f-a039-313cf8827b86",
+          "title": "An American Werewolf in London 4K UHD",
+          "listing_type": "shopify",
+          "sellable": true,
+          "availability": "available_from_supplier",
+          "price": 42.99,
+          "currency": "AUD"
+        }
+      },
+      "F": {
+        "ok": true,
+        "issues": [],
+        "public": {
+          "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+          "title": "Creepozoids Blu-Ray",
+          "listing_type": "agent_only",
+          "sellable": true,
+          "availability": "available_to_order",
+          "price": 43.99,
+          "currency": "AUD"
+        }
+      }
+    }
+  },
+  "price_authority": {
+    "SHOPIFY_PRICE_AUTHORITY": "PASS",
+    "AGENT_ONLY_PRICING": "PASS"
+  },
+  "arithmetic": {
+    "samples": [
+      {
+        "title": "True Romance - Blu-Ray",
+        "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+        "shopify_inventory_quantity": 1,
+        "on_hand": 1,
+        "committed": 0,
+        "available": 1,
+        "available_eq_on_hand_minus_committed": true,
+        "tape_status": "available"
+      },
+      {
+        "title": "Beau Travail - The Criterion Collection",
+        "release_variant_id": "125152ca-9ff2-440e-914f-5940bd2ddf98",
+        "shopify_inventory_quantity": 1,
+        "on_hand": 1,
+        "committed": 0,
+        "available": 1,
+        "available_eq_on_hand_minus_committed": true,
+        "tape_status": "available"
+      },
+      {
+        "title": "Breathless - 4K (UHD)",
+        "release_variant_id": "b0a65507-2ebb-4915-a0e6-20ecc9154d51",
+        "shopify_inventory_quantity": 0,
+        "on_hand": 1,
+        "committed": 1,
+        "available": 0,
+        "available_eq_on_hand_minus_committed": true,
+        "tape_status": "sold_out"
+      },
+      {
+        "title": "L'immensita",
+        "release_variant_id": "74ec28a9-d154-40ed-9b55-7d19b0289afe",
+        "shopify_inventory_quantity": 0,
+        "on_hand": 0,
+        "committed": 0,
+        "available": 0,
+        "available_eq_on_hand_minus_committed": true,
+        "tape_status": "sold_out"
+      },
+      {
+        "title": "Battle Royale",
+        "release_variant_id": "d661e54c-0073-444a-b153-8c941ecb0c42",
+        "shopify_inventory_quantity": 0,
+        "on_hand": 0,
+        "committed": 0,
+        "available": 0,
+        "available_eq_on_hand_minus_committed": true,
+        "tape_status": "sold_out"
+      }
+    ],
+    "all_ok": true
+  },
+  "freshness": {
+    "supplier_positions": [
+      {
+        "case": "B",
+        "supplier_id": "moovies",
+        "observed_at": "2026-08-09T19:02:28.446325+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      },
+      {
+        "case": "B",
+        "supplier_id": "lasgo",
+        "observed_at": "2026-08-09T21:29:15.807032+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      },
+      {
+        "case": "E",
+        "supplier_id": "moovies",
+        "observed_at": "2026-08-09T19:02:28.446325+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      },
+      {
+        "case": "E",
+        "supplier_id": "lasgo",
+        "observed_at": "2026-08-09T21:29:15.807032+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      },
+      {
+        "case": "F",
+        "supplier_id": "moovies",
+        "observed_at": "2026-08-09T19:02:28.446325+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      },
+      {
+        "case": "F",
+        "supplier_id": "lasgo",
+        "observed_at": "2026-08-09T21:29:15.807032+00:00",
+        "availability_status": "available",
+        "is_stale": false,
+        "feed_freshness": "fresh"
+      }
+    ],
+    "any_stale_in_samples": false,
+    "note": "If no natural stale sample, rely on automated stale tests."
+  },
+  "search": {
+    "known_shopify_film": {
+      "query": "True",
+      "ms": 235.36570902797394,
+      "error": null,
+      "result": {
+        "query": "True",
+        "candidates": [
+          {
+            "release_variant_id": "cf23a198-bec5-42ad-b3c7-ca3e9e586b7e",
+            "title": "True History of the Kelly Gang Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5060105728242",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "03233b1b-a3d3-4488-8713-5f4b7bc2738e",
+            "title": "True Grit (2010) Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5051368226637",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "1f0d3b68-48f4-45db-8c65-5779a02d4a98",
+            "title": "True Justice - Dark Vengeance Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5055201818102",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "ec24d152-19ab-4e47-8a65-405bdbebb3ff",
+            "title": "True Justice - Lethal Justice Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5055201818645",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "9261b507-f7c1-4350-86f1-5b08fac0956e",
+            "title": "True Detective Season 4 Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5051892240642",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "c5918783-888e-4a83-8f25-30d8ae5fc1f4",
+            "title": "True Justice - Violence Of Action Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5055201820815",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "bac59039-6ce1-46f2-bc7a-076bdd518855",
+            "title": "True Justice - Blood Alley Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5055201820747",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "d1a732f2-53c2-4fc3-a72e-7273d82521d9",
+            "title": "True Detective Season 3 Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5051892222341",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "5b0ee331-48f8-4399-b63e-0bb8439f4b22",
+            "title": "True Justice - Street Wars Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5055201816320",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "9352812a-57fe-4750-8f71-40fb31b16a69",
+            "title": "True Lies Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5056719200700",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "07884ae8-4540-45de-acd0-4989fef295b8",
+            "title": "Dodgeball - A True Underdog Story Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5039036036849",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "b803bb77-9e8b-4ec2-b6a7-729cc708139e",
+            "title": "Cinderella / Cinderella 2 - Dreams Come True / Cinderella 3 - A Twist In Time Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "8717418366742",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "16e81079-6630-4364-80e8-4e1352042294",
+            "title": "True Detective Season 2 Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5051892194730",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "5eeda72a-143d-40ff-a8cf-546b0a535297",
+            "title": "True Things Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5060952890079",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "18360b5b-3e94-4d88-8377-da1e8bc2596b",
+            "title": "True Blood Seasons 1 to 7 Complete Collection Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5051892174107",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "f66b9675-c81f-4477-80ef-2936d7479c1b",
+            "title": "Incredible But True Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5027035024837",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "19870bf7-9665-4f2f-af2b-5bb06e7925c5",
+            "title": "True Lies 4K Ultra HD + Blu-Ray",
+            "format": "4K UHD",
+            "barcode": "5056719200243",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "9d4de5f1-86a9-41ae-9c7e-35b1a51d351d",
+            "title": "Come True Limited Edition Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5060674870205",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "fbb50d47-aaba-4216-bb98-d9eb33cc6fb7",
+            "title": "True Romance 4K Ultra HD",
+            "format": "4K UHD",
+            "barcode": "5027035023649",
+            "publication_status": "supplier_only"
+          },
+          {
+            "release_variant_id": "5c48daa8-086f-4675-a95b-98e03b72f75c",
+            "title": "Frankenstein - The True Story Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5030697047786",
+            "publication_status": "supplier_only"
+          }
+        ],
+        "count": 20
+      }
+    },
+    "agent_only_film": {
+      "query": "Creepozoids Blu-Ray",
+      "ms": 95.33049998572096,
+      "error": null,
+      "result": {
+        "query": "Creepozoids Blu-Ray",
+        "candidates": [
+          {
+            "release_variant_id": "ef3f91f3-acf0-444c-864c-22845300382f",
+            "title": "Creepozoids Blu-Ray",
+            "format": "BLU-RAY",
+            "barcode": "5037899091425",
+            "publication_status": "supplier_only"
+          }
+        ],
+        "count": 1
+      },
+      "contains_case_f": true
+    },
+    "overlap_title": {
+      "query": "blade runner",
+      "ms": 127.14741702075116,
+      "candidates": [
+        {
+          "release_variant_id": "25e31e30-0773-4c85-bd21-f1b6fbeedcee",
+          "title": "Blade Runner 2049 Blu-Ray",
+          "format": "BLU-RAY",
+          "barcode": "5050629493344",
+          "publication_status": "supplier_only"
+        },
+        {
+          "release_variant_id": "3fe122d9-ace2-4e11-8810-0b7ed15b918f",
+          "title": "Blade Runner - The Final Cut 4K Ultra HD + Blu-Ray",
+          "format": "4K UHD",
+          "barcode": "5051892209472",
+          "publication_status": "supplier_only"
+        },
+        {
+          "release_variant_id": "bbe1ee5c-d655-4c9c-ad63-6e4b8970f803",
+          "title": "Blade Runner 2049 4K Ultra HD + Blu-Ray",
+          "format": "4K UHD",
+          "barcode": "5050630493340",
+          "publication_status": "supplier_only"
+        },
+        {
+          "release_variant_id": "148f3c46-6c41-4b5f-8548-fcc04ba64482",
+          "title": "Blade Runner - The Final Cut Blu-Ray",
+          "format": "BLU-RAY",
+          "barcode": "7321900184694",
+          "publication_status": "supplier_only"
+        },
+        {
+          "release_variant_id": "9cadb9d4-e8a0-498d-81f6-402ad3db0265",
+          "title": "Blade Runner 2049 Limited Edition Steelbook 4K Ultra HD + Blu-Ray",
+          "format": null,
+          "barcode": "5050630493425",
+          "publication_status": "published"
+        }
+      ],
+      "domains": [
+        {
+          "id": "25e31e30-0773-4c85-bd21-f1b6fbeedcee",
+          "product_domain": null,
+          "title": "Blade Runner 2049 Blu-Ray"
+        },
+        {
+          "id": "3fe122d9-ace2-4e11-8810-0b7ed15b918f",
+          "product_domain": null,
+          "title": "Blade Runner - The Final Cut 4K Ultra HD + Blu-Ray"
+        },
+        {
+          "id": "bbe1ee5c-d655-4c9c-ad63-6e4b8970f803",
+          "product_domain": null,
+          "title": "Blade Runner 2049 4K Ultra HD + Blu-Ray"
+        },
+        {
+          "id": "148f3c46-6c41-4b5f-8548-fcc04ba64482",
+          "product_domain": null,
+          "title": "Blade Runner - The Final Cut Blu-Ray"
+        },
+        {
+          "id": "9cadb9d4-e8a0-498d-81f6-402ad3db0265",
+          "product_domain": null,
+          "title": "Blade Runner 2049 Limited Edition Steelbook 4K Ultra HD + Blu-Ray"
+        }
+      ],
+      "music_vinyl_excluded": true
+    }
+  },
+  "failures": {
+    "unknown_barcode": {
+      "ok": true,
+      "error": {
+        "error": "RELEASE_NOT_FOUND",
+        "message": "No release_variant for barcode=0000000000000",
+        "details": {}
+      }
+    },
+    "unknown_release_variant_id": {
+      "ok": true,
+      "error": {
+        "error": "RELEASE_NOT_FOUND",
+        "message": "release_variant_id not found: 00000000-0000-0000-0000-000000000000",
+        "details": {}
+      }
+    },
+    "no_tape_inventory": {
+      "release_variant_id": "19309f63-6e7f-478c-8de7-6f6f51c7dda8",
+      "title": "Stray Kids - The dominATE Experience Blu-Ray",
+      "error": null,
+      "tape": {
+        "status": "unknown",
+        "on_hand": null,
+        "committed": null,
+        "available": null,
+        "incoming": null,
+        "observed_at": null,
+        "is_stale": null,
+        "age_hours": null,
+        "shopify_location_id": null,
+        "present": false
+      },
+      "ok": true
+    }
+  },
+  "history": {
+    "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+    "error": null,
+    "result": {
+      "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+      "observations": [],
+      "events": [
+        {
+          "id": "2699632a-bdad-4860-a1a2-cd437ff11b89",
+          "event_type": "tape_stock_synced",
+          "observed_at": "2026-08-09T09:13:07.104894+00:00",
+          "release_variant_id": "dc771d96-c524-4a64-9d42-8f3c4a51526c",
+          "supplier_offer_id": null
+        }
+      ]
+    },
+    "status": "IMPLEMENTED"
+  },
+  "performance": {
+    "stock_by_id": {
+      "n": 6,
+      "min_ms": 176.9,
+      "median_ms": 203.3,
+      "max_ms": 227.2
+    },
+    "stock_by_barcode": {
+      "n": 4,
+      "min_ms": 202.7,
+      "median_ms": 239.7,
+      "max_ms": 286.1
+    },
+    "commerce_shopify": {
+      "n": 5,
+      "min_ms": 242.8,
+      "median_ms": 274.6,
+      "max_ms": 315.7
+    },
+    "commerce_agent_only": {
+      "n": 1,
+      "min_ms": 207.7,
+      "median_ms": 207.7,
+      "max_ms": 207.7
+    },
+    "search_to_commerce": {
+      "n": 1,
+      "min_ms": 445.7,
+      "median_ms": 445.7,
+      "max_ms": 445.7
+    }
+  },
+  "combined_inventory": {
+    "NO_COMBINED_INVENTORY": "PASS"
+  },
+  "matrix": [
+    {
+      "Scenario": "In Stock",
+      "Release": "True Romance - Blu-Ray",
+      "TAPE available": 1,
+      "Supplier state": "none",
+      "Shopify?": "Yes",
+      "Price source": "shopify",
+      "Customer state": "in_stock",
+      "Result": "PASS"
+    },
+    {
+      "Scenario": "Supplier",
+      "Release": "An American Werewolf in London 4K UHD",
+      "TAPE available": 0,
+      "Supplier state": "available",
+      "Shopify?": "Yes",
+      "Price source": "shopify",
+      "Customer state": "available_from_supplier",
+      "Result": "PASS"
+    },
+    {
+      "Scenario": "OOS",
+      "Release": "Breathless - 4K (UHD)",
+      "TAPE available": 0,
+      "Supplier state": "none",
+      "Shopify?": "Yes",
+      "Price source": "shopify",
+      "Customer state": "out_of_stock",
+      "Result": "PASS"
+    },
+    {
+      "Scenario": "Oversold",
+      "Release": "The Addiction Limited Edition 4K Ultra HD",
+      "TAPE available": -1,
+      "Supplier state": "available",
+      "Shopify?": "Yes",
+      "Price source": "shopify",
+      "Customer state": "available_from_supplier",
+      "Result": "PASS"
+    },
+    {
+      "Scenario": "Multi-supplier",
+      "Release": "An American Werewolf in London 4K UHD",
+      "TAPE available": 0,
+      "Supplier state": "available",
+      "Shopify?": "Yes",
+      "Price source": "shopify",
+      "Customer state": "available_from_supplier",
+      "Result": "PASS"
+    },
+    {
+      "Scenario": "Agent-only",
+      "Release": "Creepozoids Blu-Ray",
+      "TAPE available": null,
+      "Supplier state": "available",
+      "Shopify?": "No",
+      "Price source": "supplier_pricing_policy",
+      "Customer state": "available_to_order",
+      "Result": "PASS"
+    }
+  ],
+  "pass_fail": {
+    "A": "PASS",
+    "B": "PASS",
+    "C": "PASS",
+    "D": "PASS",
+    "E": "PASS",
+    "F": "PASS"
+  },
+  "selections_found": {
+    "A_in_stock": true,
+    "B_available_from_supplier": true,
+    "C_out_of_stock": true,
+    "D_oversold": true,
+    "E_multi_supplier": true,
+    "F_agent_only": true
+  },
+  "PUBLIC_SUPPLIER_PRIVACY": "PASS",
+  "vinyl_contamination": "PASS"
+}

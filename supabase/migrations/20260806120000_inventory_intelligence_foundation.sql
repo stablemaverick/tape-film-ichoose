@@ -505,4 +505,38 @@ create index if not exists inventory_events_pipeline_run_idx
   on public.inventory_events (pipeline_run_id)
   where pipeline_run_id is not null;
 
+-- ---------------------------------------------------------------------------
+
+-- Security: internal operational tables
+
+-- ---------------------------------------------------------------------------
+
+-- These tables are written and read by trusted backend services using the
+
+-- Supabase service role. No anon/authenticated policies are created in this
+
+-- phase. Service-role access bypasses RLS.
+
+alter table public.suppliers enable row level security;
+
+alter table public.release_variants enable row level security;
+
+alter table public.release_shopify_listings enable row level security;
+
+alter table public.variant_identifiers enable row level security;
+
+alter table public.tape_inventory_levels enable row level security;
+
+alter table public.supplier_offers enable row level security;
+
+alter table public.supplier_offer_observations enable row level security;
+
+alter table public.supplier_sku_resolutions enable row level security;
+
+alter table public.purchase_orders enable row level security;
+
+alter table public.purchase_order_lines enable row level security;
+
+alter table public.inventory_events enable row level security;
+
 commit;

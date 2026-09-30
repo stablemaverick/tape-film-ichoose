@@ -26,6 +26,17 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
+def _int_env(name: str, default: int, *, minimum: int = 1, maximum: int = 5000) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
 @dataclass(frozen=True)
 class InventoryDualWriteFlags:
     enabled: bool
@@ -36,6 +47,8 @@ class InventoryDualWriteFlags:
     fresh_max_hours: float
     aging_max_hours: float
     create_supplier_only_releases: bool
+    supplier_batch_size: int
+    supplier_in_chunk_size: int
 
     @property
     def shopify_enabled(self) -> bool:
@@ -63,6 +76,12 @@ def load_inventory_dual_write_flags() -> InventoryDualWriteFlags:
         aging_max_hours=_float_env("AVAILABILITY_FEED_AGING_MAX_HOURS", 72.0),
         create_supplier_only_releases=_flag(
             "INVENTORY_CREATE_SUPPLIER_ONLY_RELEASES", "1"
+        ),
+        supplier_batch_size=_int_env(
+            "INVENTORY_DUAL_WRITE_SUPPLIER_BATCH_SIZE", 500, minimum=50, maximum=2000
+        ),
+        supplier_in_chunk_size=_int_env(
+            "INVENTORY_DUAL_WRITE_SUPPLIER_IN_CHUNK", 150, minimum=25, maximum=500
         ),
     )
 
