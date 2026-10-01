@@ -18,6 +18,7 @@ from app.services.arrow_inventory_policy_sync_service import (
     is_region_b,
     normalize_region,
     normalize_studio_label,
+    prefer_stock_feed_offers,
     resolve_variant_region,
     supplier_confirmed_unavailable,
     supplier_is_usable,
@@ -204,6 +205,58 @@ def test_non_zero_qty_no_change():
     )
     assert action == ACTION_NO_CHANGE
     assert reason == "shopify_qty_not_zero"
+
+
+def test_oversold_continue_flips_to_deny_when_supplier_unavailable():
+    action, reason = classify_zero_stock_policy(
+        inventory_policy="CONTINUE",
+        shopify_qty=-1,
+        supplier_usable=False,
+        confirmed_unavailable=True,
+        has_any_offer=True,
+        protect_future_preorder=False,
+    )
+    assert action == ACTION_SET_DENY
+    assert reason == "continue_zero_stock_supplier_unavailable"
+
+
+def test_oversold_continue_kept_when_supplier_available():
+    action, _ = classify_zero_stock_policy(
+        inventory_policy="CONTINUE",
+        shopify_qty=-2,
+        supplier_usable=True,
+        confirmed_unavailable=False,
+        has_any_offer=True,
+        protect_future_preorder=False,
+    )
+    assert action == ACTION_NO_CHANGE
+
+
+def test_oversold_deny_never_flips_to_continue():
+    action, reason = classify_zero_stock_policy(
+        inventory_policy="DENY",
+        shopify_qty=-1,
+        supplier_usable=True,
+        confirmed_unavailable=False,
+        has_any_offer=True,
+        protect_future_preorder=False,
+    )
+    assert action == ACTION_NO_CHANGE
+    assert reason == "deny_oversold_no_flip"
+
+
+def test_prefer_stock_feed_offers_drops_catalog_offer_for_same_supplier():
+    stock = {"supplier_id": "moovies", "supplier_sku": "barcode:111", "api_status": "unavailable", "freshness": "fresh", "qty": 0}
+    catalog = {"supplier_id": "moovies", "supplier_sku": "FCD1", "api_status": "available", "freshness": "fresh", "qty": 3}
+    lasgo = {"supplier_id": "lasgo", "supplier_sku": "L1", "api_status": "available", "freshness": "fresh", "qty": 2}
+    assert prefer_stock_feed_offers([stock, catalog, lasgo]) == [stock, lasgo]
+
+
+def test_prefer_stock_feed_offers_keeps_catalog_when_stock_feed_stale_or_absent():
+    stale_stock = {"supplier_id": "moovies", "supplier_sku": "barcode:111", "api_status": "unavailable", "freshness": "stale", "qty": 0}
+    catalog = {"supplier_id": "moovies", "supplier_sku": "FCD1", "api_status": "available", "freshness": "fresh", "qty": 3}
+    assert prefer_stock_feed_offers([stale_stock, catalog]) == [stale_stock, catalog]
+    assert prefer_stock_feed_offers([catalog]) == [catalog]
 
 
 def test_idempotent_already_continue():
@@ -397,6 +450,49 @@ def test_build_decisions_tape_in_stock_no_change():
     assert d.action == ACTION_NO_CHANGE
     assert d.reason == "shopify_qty_not_zero"
     assert d.tape_on_hand == 3
+
+
+def test_build_decisions_oversold_continue_denied_when_stock_feed_out_despite_catalog_stock():
+    now = datetime(2026, 10, 1, 3, 10, tzinfo=timezone.utc)
+    vid = "gid://shopify/ProductVariant/47531554930912"
+    products = [_product(studio="Arrow Video", policy="CONTINUE", qty=-1, barcode="5027035029245", vid=vid)]
+    base = {
+        "supplier_id": "moovies",
+        "raw_barcode": "5027035029245",
+        "release_variant_id": "r-dc",
+    }
+    sb = _SB(
+        {
+            "release_shopify_listings": [{"shopify_variant_id": vid, "release_variant_id": "r-dc"}],
+            "supplier_offers": [
+                {
+                    **base,
+                    "supplier_sku": "barcode:5027035029245",
+                    "availability_status": "unavailable",
+                    "reported_quantity": 0,
+                    "last_seen_at": "2026-10-01T03:03:37+00:00",
+                    "source_feed_at": "2026-10-01T03:03:37+00:00",
+                    "pipeline_completed_at": "2026-10-01T03:03:37+00:00",
+                },
+                {
+                    **base,
+                    "supplier_sku": "FCD2754",
+                    "availability_status": "in_stock",
+                    "reported_quantity": 3,
+                    "last_seen_at": "2026-10-01T02:25:43+00:00",
+                    "source_feed_at": "2026-10-01T02:25:43+00:00",
+                    "pipeline_completed_at": "2026-10-01T02:25:43+00:00",
+                },
+            ],
+            "tape_inventory_levels": [],
+            "suppliers": [{"id": "moovies", "display_name": "Moovies"}],
+        }
+    )
+    d = build_decisions_for_products(products, supabase=sb, now=now)[0]
+    assert d.action == ACTION_SET_DENY
+    assert d.reason == "continue_zero_stock_supplier_unavailable"
+    assert d.available_suppliers == ""
+    assert "qty=3" in d.all_supplier_states
 
 
 def test_build_decisions_ambiguous_mapping_unresolved_zero_stock():

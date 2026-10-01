@@ -5,13 +5,15 @@ Originally Arrow-only (A + B). Generalised to an explicit studio/label set
 (Arrow, Second Sight, Criterion Collection) without changing the Arrow
 classifier or production apply wrapper.
 
-Rules (Shopify qty exactly 0 only — TAPE store quantity from Shopify):
-  A) DENY + supplier available (fresh/aging Moovies/Lasgo) → CONTINUE
-  B) CONTINUE + supplier not available with clear evidence → DENY
+Rules (Shopify qty 0, or negative for rule B — TAPE store quantity from Shopify):
+  A) DENY + qty 0 + supplier available (fresh/aging Moovies/Lasgo) → CONTINUE
+     - never for negative qty: supplier stock is already owed to the oversold order
+  B) CONTINUE + qty <= 0 + supplier not available with clear evidence → DENY
      - clear evidence: all offers fresh/aging unavailable, or no offer found
      - skip stale/ambiguous supplier state
      - protect valid future preorders from DENY flips
      - optional extra CONTINUE protections: backorder metafield / preorder flag
+  Per supplier, a current daily stock-feed offer supersedes catalog-feed offers.
 
 Shopify mutations (when apply=True) change ONLY inventoryPolicy.
 """
@@ -270,6 +272,29 @@ def supplier_is_usable(evaluated: Sequence[dict[str, Any]]) -> bool:
     return False
 
 
+# The Moovies inventory feed carries only the EAN, so its offers are keyed barcode:{ean};
+# catalog-feed offers for the same release use the supplier's native SKU.
+STOCK_FEED_SKU_PREFIX = "barcode:"
+
+
+def _is_stock_feed_offer(e: dict[str, Any]) -> bool:
+    return str(e.get("supplier_sku") or "").startswith(STOCK_FEED_SKU_PREFIX)
+
+
+def prefer_stock_feed_offers(evaluated: Sequence[dict[str, Any]]) -> List[dict[str, Any]]:
+    """Per supplier, drop catalog-feed offers when a fresh/aging stock-feed offer exists."""
+    current_stock_feed = {
+        e.get("supplier_id")
+        for e in evaluated
+        if _is_stock_feed_offer(e) and e.get("freshness") in {"fresh", "aging"}
+    }
+    return [
+        e
+        for e in evaluated
+        if e.get("supplier_id") not in current_stock_feed or _is_stock_feed_offer(e)
+    ]
+
+
 def supplier_confirmed_unavailable(evaluated: Sequence[dict[str, Any]]) -> bool:
     wholesale = [
         e
@@ -303,10 +328,12 @@ def classify_zero_stock_policy(
     policy = (inventory_policy or "").upper()
     if shopify_qty is None:
         return ACTION_SKIP, "shopify_qty_unknown"
-    if shopify_qty != 0:
+    if shopify_qty > 0:
         return ACTION_NO_CHANGE, "shopify_qty_not_zero"
 
     if policy == "DENY":
+        if shopify_qty < 0:
+            return ACTION_NO_CHANGE, "deny_oversold_no_flip"
         if supplier_usable:
             return ACTION_SET_CONTINUE, "deny_zero_stock_supplier_available"
         return ACTION_NO_CHANGE, "deny_zero_stock_no_usable_supplier"
@@ -380,7 +407,7 @@ def safety_for_decision(
     has_any_offer: bool,
 ) -> str:
     policy = (inventory_policy or "").upper()
-    if shopify_qty is not None and shopify_qty != 0:
+    if shopify_qty is not None and shopify_qty > 0:
         return SAFETY_TAPE_IN_STOCK
     if action == ACTION_SET_CONTINUE:
         return SAFETY_DENY_TO_CONTINUE
@@ -763,7 +790,8 @@ def build_decisions_for_products(
             if offers:
                 resolution = "supplier_offers_by_barcode"
 
-        evaluated = _eval_offers(offers, suppliers=ctx["suppliers"], now=now)
+        all_evaluated = _eval_offers(offers, suppliers=ctx["suppliers"], now=now)
+        evaluated = prefer_stock_feed_offers(all_evaluated)
         usable = supplier_is_usable(evaluated)
         confirmed_unavail = supplier_confirmed_unavailable(evaluated)
         best = next(
@@ -852,7 +880,7 @@ def build_decisions_for_products(
                 supplier_observed_at=str(best.get("observed_at") or ""),
                 all_supplier_states="; ".join(
                     f"{e.get('supplier_id')}:{e.get('api_status')}:{e.get('freshness')}:qty={e.get('qty')}"
-                    for e in evaluated
+                    for e in all_evaluated
                 ),
                 action=action,
                 reason=reason,
@@ -971,7 +999,7 @@ def summarize_decisions(
         arrow_products=arrow_products,
         eligible_products=eligible_products if eligible_products is not None else arrow_products,
         variants_examined=len(decisions),
-        zero_stock_variants=sum(1 for d in decisions if d.shopify_qty == 0),
+        zero_stock_variants=sum(1 for d in decisions if d.shopify_qty is not None and d.shopify_qty <= 0),
         dry_run=dry_run,
         csv_path=csv_path,
         json_path=json_path,
